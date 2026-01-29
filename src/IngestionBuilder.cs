@@ -1,6 +1,6 @@
+using OpenAI;
 using Azure.AI.OpenAI;
 using OpenAI.Embeddings;
-using System.ClientModel;
 using System.Text.Json;
 using UglyToad.PdfPig;
 using Spectre.Console;
@@ -9,63 +9,55 @@ namespace Antty;
 
 public static class IngestionBuilder
 {
-    public static async Task BuildDatabaseAsync(string pdfPath, string apiKey, string outputPath)
+    public static async Task BuildDatabaseAsync(string filePath, string apiKey, string outputPath)
     {
         AnsiConsole.Write(new Rule("[bold yellow]🚀 STARTING INGESTION[/]").RuleStyle("yellow"));
         AnsiConsole.WriteLine();
 
-        var client = new AzureOpenAIClient(new Uri("https://api.openai.com/v1"), new ApiKeyCredential(apiKey));
+        var client = new OpenAIClient(apiKey);
         var embeddingClient = client.GetEmbeddingClient("text-embedding-3-small");
         var chunks = new List<RawChunk>();
         int globalId = 0;
 
-        // 1. READ PDF
-        await AnsiConsole.Status()
-            .Spinner(Spinner.Known.Dots)
-            .SpinnerStyle(Style.Parse("green bold"))
-            .StartAsync($"[cyan]Reading {Path.GetFileName(pdfPath)}...[/]", async ctx =>
+        // 1. EXTRACT TEXT FROM FILE (supports PDF, TXT, MD, JSON)
+        var extractedText = await ExtractTextFromFileAsync(filePath);
+        
+        await AnsiConsole.Progress()
+            .Columns(
+                new TaskDescriptionColumn(),
+                new ProgressBarColumn(),
+                new PercentageColumn(),
+                new SpinnerColumn()
+            )
+            .StartAsync(async ctx =>
             {
-                using (var document = PdfDocument.Open(pdfPath))
+                var task = ctx.AddTask($"[cyan]Processing {Path.GetFileName(filePath)}[/]", maxValue: extractedText.Count);
+
+                foreach (var (pageNumber, text) in extractedText)
                 {
-                    var progress = AnsiConsole.Progress()
-                        .Columns(
-                            new TaskDescriptionColumn(),
-                            new ProgressBarColumn(),
-                            new PercentageColumn(),
-                            new SpinnerColumn()
-                        );
+                    // Simple splitting by double newline (paragraphs)
+                    var paragraphs = text.Split(new[] { "\n\n", "\r\n\r\n" }, StringSplitOptions.RemoveEmptyEntries);
 
-                    await progress.StartAsync(async pctx =>
+                    foreach (var para in paragraphs)
                     {
-                        var task = pctx.AddTask("[green]Extracting paragraphs[/]", maxValue: document.NumberOfPages);
+                        string cleanText = para.Replace("\n", " ").Trim();
 
-                        foreach (var page in document.GetPages())
+                        // --- 🧹 NOISE FILTERING ---
+                        // Skip if too short (headers, page nums, noise)
+                        if (cleanText.Length < 30) continue;
+                        // Skip if it looks like just a number
+                        if (int.TryParse(cleanText, out _)) continue;
+
+                        chunks.Add(new RawChunk
                         {
-                            // Simple splitting by double newline (paragraphs)
-                            var paragraphs = page.Text.Split(new[] { "\n\n", "\r\n\r\n" }, StringSplitOptions.RemoveEmptyEntries);
+                            Id = globalId++,
+                            PageNumber = pageNumber,
+                            Content = cleanText
+                        });
+                    }
 
-                            foreach (var text in paragraphs)
-                            {
-                                string cleanText = text.Replace("\n", " ").Trim();
-
-                                // --- 🧹 NOISE FILTERING ---
-                                // Skip if too short (headers, page nums, noise)
-                                if (cleanText.Length < 30) continue;
-                                // Skip if it looks like just a number
-                                if (int.TryParse(cleanText, out _)) continue;
-
-                                chunks.Add(new RawChunk
-                                {
-                                    Id = globalId++,
-                                    PageNumber = page.Number,
-                                    Content = cleanText
-                                });
-                            }
-
-                            task.Increment(1);
-                            await Task.Delay(1); // Allow UI to update
-                        }
-                    });
+                    task.Increment(1);
+                    await Task.Delay(1); // Allow UI to update
                 }
             });
 
@@ -128,5 +120,58 @@ public static class IngestionBuilder
         .Padding(1, 0));
 
         AnsiConsole.WriteLine();
+    }
+
+    /// <summary>
+    /// Extracts text from various file formats (PDF, TXT, MD, JSON)
+    /// Returns a list of (page/section number, text content) tuples
+    /// </summary>
+    private static async Task<List<(int pageNumber, string text)>> ExtractTextFromFileAsync(string filePath)
+    {
+        var extension = Path.GetExtension(filePath).ToLowerInvariant();
+        var results = new List<(int, string)>();
+
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .SpinnerStyle(Style.Parse("cyan bold"))
+            .StartAsync($"[cyan]Reading {Path.GetFileName(filePath)}...[/]", async ctx =>
+            {
+                switch (extension)
+                {
+                    case ".pdf":
+                        // Extract from PDF using PdfPig
+                        using (var document = PdfDocument.Open(filePath))
+                        {
+                            foreach (var page in document.GetPages())
+                            {
+                                results.Add((page.Number, page.Text));
+                            }
+                        }
+                        break;
+
+                    case ".txt":
+                    case ".md":
+                    case ".json":
+                        // Read text files directly
+                        var content = await File.ReadAllTextAsync(filePath);
+                        // Split into "pages" of ~2000 characters for consistency
+                        var chunkSize = 2000;
+                        for (int i = 0; i < content.Length; i += chunkSize)
+                        {
+                            var pageNum = (i / chunkSize) + 1;
+                            var chunk = content.Substring(i, Math.Min(chunkSize, content.Length - i));
+                            results.Add((pageNum, chunk));
+                        }
+                        break;
+
+                    default:
+                        throw new NotSupportedException($"File format '{extension}' is not supported. Supported formats: .pdf, .txt, .md, .json");
+                }
+
+                await Task.CompletedTask;
+            });
+
+        AnsiConsole.MarkupLine($"[green]✓[/] Loaded [bold cyan]{results.Count}[/] sections from {Path.GetExtension(filePath).ToUpper()} file.");
+        return results;
     }
 }

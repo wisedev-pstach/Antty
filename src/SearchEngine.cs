@@ -1,6 +1,6 @@
+using OpenAI;
 using Azure.AI.OpenAI;
 using OpenAI.Embeddings;
-using System.ClientModel;
 using System.Numerics.Tensors;
 using System.Text.Json;
 using Spectre.Console;
@@ -14,7 +14,7 @@ public class SearchEngine
 
     public SearchEngine(string apiKey, string dbPath)
     {
-        var client = new AzureOpenAIClient(new Uri("https://api.openai.com/v1"), new ApiKeyCredential(apiKey));
+        var client = new OpenAIClient(apiKey);
         _embeddingClient = client.GetEmbeddingClient("text-embedding-3-small");
 
         if (!File.Exists(dbPath))

@@ -103,3 +103,10 @@ Desktop.ini
 # Application specific
 knowledge.json
 *.pdf
+
+# Antty specific
+publish/
+.antty-cache/
+test.txt
+test-antty.bat
+

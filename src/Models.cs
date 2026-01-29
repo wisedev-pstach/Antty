@@ -15,4 +15,5 @@ public class RawSearchResult
     public string Text { get; set; } = string.Empty;  // The raw paragraph
     public int Page { get; set; }                     // Source page
     public double Score { get; set; }                 // 0.0 to 1.0 confidence
+    public string BookSource { get; set; } = string.Empty; // Source document name
 }

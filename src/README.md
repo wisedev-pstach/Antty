@@ -1,143 +1,164 @@
-# 📚 Antty - Semantic Book Search Engine
+# 📚 Antty - Semantic Document Search CLI
 
-A beautiful .NET console application that uses OpenAI embeddings to perform semantic search on PDF books. Find relevant content based on meaning, not just keywords!
+A powerful .NET CLI tool that uses OpenAI embeddings to perform semantic search across multiple documents. Find relevant content based on meaning, not just keywords!
 
 ## ✨ Features
 
 - 🎨 **Beautiful Console UI** powered by Spectre.Console
 - 🔍 **Semantic Search** using OpenAI's text-embedding-3-small model
-- 📊 **Progress Indicators** for long-running operations
+- 📊 **Multi-Document Support** - Search across multiple documents simultaneously
+- 📄 **Multiple Formats** - Supports PDF, TXT, MD, and JSON files
 - 💾 **In-Memory Vector Store** for blazing-fast searches
 - 💰 **Low Cost** - approximately $0.02 for a 400-page book ingestion
-- ⚙️ **Configuration Management** - API key and book preferences stored automatically
-- 📚 **Multiple Books Support** - Switch between different books at runtime
-- 🗂️ **Books Folder** - Organized storage for your PDF library
+- ⚙️ **Auto-Configuration** - API key saved securely
+- 🚀 **CLI Tool** - Use `antty` from anywhere in your terminal
 
-## 🚀 Quick Start
+## 🚀 Installation
 
-### Prerequisites
+### Windows
 
-- .NET 8.0 or higher
-- OpenAI API Key
-- A PDF book to search
+```powershell
+cd C:\WiseDev\Antty
+.\install.ps1
+```
 
-### Installation
-
-1. **Clone or navigate to the project directory:**
-   ```bash
-   cd Antty
-   ```
-
-2. **Build the solution:**
-   ```bash
-   dotnet build
-   ```
-
-3. **Run the application:**
-   ```bash
-   dotnet run --project src/Antty.csproj
-   ```
-
-4. **First-time setup:**
-   - The app will prompt you for your OpenAI API key (stored securely in your AppData folder)
-   - Add your PDF files to the `books/` folder, or specify a custom path when prompted
-
-
-
-### Running the Application
+### Linux/macOS
 
 ```bash
-dotnet run --project src/Antty.csproj
+cd /path/to/Antty
+chmod +x install.sh
+./install.sh
 ```
+
+After installation, you can use `antty` from any directory! You may need to restart your terminal.
 
 ## 📖 Usage
 
-The application provides an interactive menu with the following options:
+### Quick Start
 
-### 📚 Select/Load Book
+1. **Navigate to a directory with documents:**
+   ```bash
+   cd ~/Documents/MyBooks
+   ```
 
-1. Choose from PDFs in the `books/` folder
-2. Or specify a custom path to any PDF file
-3. Your selection is saved for future sessions
+2. **Run Antty:**
+   ```bash
+   antty
+   ```
 
-### 🔨 Build Knowledge Base
+3. **Follow the interactive prompts:**
+   - Select documents to analyze (PDF, TXT, MD, JSON)
+   - Knowledge bases are built automatically if needed
+   - Start asking questions!
 
-1. Select a book first (if you haven't already)
-2. Choose this option to process the PDF and generate embeddings
-3. A knowledge base file (`{bookname}_knowledge.json`) will be created in the same folder as your PDF
-4. This only needs to be done once per book
+### Example Workflow
 
-### 🔍 Search Your Book
+```bash
+$ cd ~/Documents/TechDocs
+$ antty
 
-1. Ensure a book is selected and its knowledge base is built
-2. Enter your question naturally (e.g., "What does the author say about machine learning?")
-3. View the results in a beautiful table with relevance scores
-4. Continue asking questions or type 'exit' to return to the main menu
+Found 5 document(s) in: /Users/you/Documents/TechDocs
 
-### ⚙️ Settings
+Select documents to load:
+❯ ◉ architecture-guide.pdf
+  ◉ api-documentation.md
+  ◯ notes.txt
+  ◉ design-patterns.pdf
+  ◯ changelog.json
 
-- Update your OpenAI API key
-- View information about the currently selected book
+Building knowledge base for: architecture-guide.pdf
+✓ Extracted 245 valid paragraphs
+✓ Database saved to architecture-guide_knowledge.json
 
+✓ Loaded 3 document(s) for searching
+
+🔍 SEARCH MODE
+Ask a question (or 'exit' to quit): What design patterns are recommended for microservices?
+
+┌─────────┬──────┬───────────┬─────────────────────────────────────┐
+│ Source  │ Page │ Relevance │ Content                             │
+├─────────┼──────┼───────────┼─────────────────────────────────────┤
+│ design… │ 42   │ 87.3%     │ For microservices, we recommend...  │
+│ archit… │ 15   │ 79.1%     │ The API Gateway pattern is...       │
+└─────────┴──────┴───────────┴─────────────────────────────────────┘
+```
 
 ## 🎯 How It Works
 
-### Ingestion Phase (`IngestionBuilder.cs`)
+### Supported File Formats
 
-1. **PDF Extraction**: Reads all pages from your PDF
-2. **Paragraph Splitting**: Breaks content into meaningful chunks
-3. **Noise Filtering**: Removes headers, footers, and page numbers
-4. **Embedding Generation**: Creates 512-dimensional vectors for each chunk
-5. **Persistence**: Saves everything to `knowledge.json`
+| Format | Extension | Processing |
+|--------|-----------|------------|
+| PDF    | `.pdf`    | Text extraction via PdfPig |
+| Text   | `.txt`    | Direct reading |
+| Markdown | `.md`   | Direct reading (formatting preserved) |
+| JSON   | `.json`   | Direct reading (structure preserved) |
 
-### Search Phase (`SearchEngine.cs`)
+### Ingestion Phase
 
-The entire search process is handled by a single method: `SearchBookAsync()`
+1. **File Detection**: Scans current directory for supported formats
+2. **Text Extraction**: Extracts content based on file type
+3. **Paragraph Splitting**: Breaks content into meaningful chunks
+4. **Noise Filtering**: Removes headers, footers, and page numbers
+5. **Embedding Generation**: Creates 512-dimensional vectors for each chunk
+6. **Persistence**: Saves to `{filename}_knowledge.json` in the same directory
+
+### Search Phase
 
 1. **Question Embedding**: Converts your question into a 512-dimensional vector
-2. **Similarity Calculation**: Computes cosine similarity with all chunks
+2. **Similarity Calculation**: Computes cosine similarity with all chunks across all documents
 3. **Threshold Filtering**: Filters results with similarity > 0.45
-4. **Top Results**: Returns the top 5 most relevant passages
+4. **Top Results**: Returns the top 10 most relevant passages from all documents
 
 ## 🛠️ Configuration
 
-### Adjusting Search Sensitivity
+### API Key
 
-In `SearchEngine.cs`, modify the threshold:
+First run will prompt for your OpenAI API Key, which is stored securely in:
+- **Windows:** `%APPDATA%\Antty\config.json`
+- **macOS:** `~/Library/Application Support/Antty/config.json`
+- **Linux:** `~/.config/Antty/config.json`
+
+### Knowledge Base Files
+
+Generated and stored in a centralized cache directory:
+- **Windows:** `%APPDATA%\Antty\cache\`
+- **macOS:** `~/Library/Application Support/Antty/cache/`
+- **Linux:** `~/.config/Antty/cache/`
+
+Files are named: `{documentname}_{hash}_knowledge.json`
+
+The hash ensures files with the same name in different locations don't conflict.
+
+### Adjusting Search Parameters
+
+Edit `src/SearchEngine.cs`:
 
 ```csharp
 if (similarity > 0.45)  // Increase to 0.55 for stricter results
 ```
 
-### Changing Noise Filtering
-
-In `IngestionBuilder.cs`, adjust minimum text length:
+Edit `src/IngestionBuilder.cs`:
 
 ```csharp
-if (cleanText.Length < 30) continue;  // Increase to filter more aggressively
-```
-
-### Batch Size for Embeddings
-
-In `IngestionBuilder.cs`, modify the batch size:
-
-```csharp
-int batchSize = 10;  // Increase for faster processing (but watch rate limits)
+if (cleanText.Length < 30) continue;  // Minimum text length
 ```
 
 ## 📦 Dependencies
 
-- **UglyToad.PdfPig** - PDF text extraction
-- **Azure.AI.OpenAI** - OpenAI API client
-- **System.Numerics.Tensors** - Fast cosine similarity calculations
-- **Spectre.Console** - Beautiful console UI
+- **.NET 10.0**
+- **Azure.AI.OpenAI** (v2.1.0) - OpenAI API client
+- **Spectre.Console** (v0.54.0) - Beautiful console UI
+- **System.Numerics.Tensors** (v10.0.2) - Fast cosine similarity
+- **UglyToad.PdfPig** (v1.7.0) - PDF text extraction
 
 ## 💡 Tips
 
-1. **First run**: Always build the knowledge base before searching
+1. **Organize documents**: Place related documents in the same directory
 2. **Cost optimization**: The 512-dimension setting saves 66% compared to full embeddings
-3. **Large books**: Processing may take a few minutes for very large PDFs
+3. **Large files**: Processing may take a few minutes for very large documents
 4. **Better results**: Ask specific questions about concepts, not just keywords
+5. **Reuse knowledge bases**: Once built, knowledge bases are reused automatically
 
 ## 🎨 Console Features
 
@@ -146,54 +167,64 @@ int batchSize = 10;  // Increase for faster processing (but watch rate limits)
 - Spinner animations
 - Formatted tables for results
 - Color-coded relevance scores:
-  - 🟢 Green: > 80% relevant
-  - 🟡 Yellow: 60-80% relevant  
+  - 🟢 Green: >80% relevant
+  - 🟡 Yellow: 60-80% relevant
   - 🟠 Orange: 45-60% relevant
+
+## 🗑️ Uninstallation
+
+### Windows
+```powershell
+cd C:\WiseDev\Antty
+.\uninstall.ps1
+```
+
+### Linux/macOS
+```bash
+cd /path/to/Antty
+./uninstall.sh
+```
 
 ## 📝 Project Structure
 
 ```
 Antty/
+├── install.ps1               # Windows installation script
+├── install.sh                # Linux/macOS installation script
+├── uninstall.ps1             # Windows uninstall script
+├── uninstall.sh              # Linux/macOS uninstall script
 ├── Antty.sln                 # Solution file
-├── books/                    # Place your PDF files here
-│   └── *.pdf
 ├── src/                      # Source code
 │   ├── Antty.csproj         # Project file
+│   ├── Program.cs           # Main CLI entry point
 │   ├── AppConfig.cs         # Configuration management
-│   ├── Models.cs            # Data models for chunks and results
-│   ├── IngestionBuilder.cs  # PDF processing and embedding generation
-│   ├── SearchEngine.cs      # Search logic (SearchBookAsync method)
-│   └── Program.cs           # Main application entry point
-└── implementation_guide.md   # Original implementation guide
+│   ├── Models.cs            # Data models
+│   ├── IngestionBuilder.cs  # Multi-format file processing
+│   ├── SearchEngine.cs      # Single document search
+│   ├── MultiBookSearchEngine.cs  # Multi-document search
+│   └── README.md            # This file
+└── publish/                  # Published executables (after install)
 ```
-
-## 🔒 Configuration Storage
-
-Your API key and preferences are stored in:
-- **Windows:** `%APPDATA%\Antty\config.json`
-- **macOS:** `~/Library/Application Support/Antty/config.json`
-- **Linux:** `~/.config/Antty/config.json`
-
-The configuration is **never** stored in the project directory, keeping your API key secure.
-
-Knowledge base files are stored alongside their source PDFs with the naming pattern: `{bookname}_knowledge.json`
 
 ## 🐛 Troubleshooting
 
-**Error: "Database not found!"**
-- You need to run the ingestion step first to create `knowledge.json`
+**Error: "No supported documents found"**
+- Make sure you have PDF, TXT, MD, or JSON files in the current directory
+
+**Error: "Knowledge base not found"**
+- Knowledge bases are created automatically on first selection
 
 **Error: "No relevant data found"**
 - Try lowering the similarity threshold in `SearchEngine.cs`
-- Ensure your question relates to content actually in the book
+- Ensure your question relates to content actually in the documents
 
 **Slow embedding generation**
-- This is normal for large books; progress bars show current status
-- Consider increasing the batch size (watch for API rate limits)
+- Normal for large documents; progress bars show current status
+- Knowledge bases are cached and reused
 
 ## 📄 License
 
-This project is based on the implementation guide for semantic search.
+Open source project for semantic document search.
 
 ---
 

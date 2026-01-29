@@ -36,6 +36,7 @@ public class DocumentAssistant
     private static MultiBookSearchEngine? _searchEngine;
     private static List<(string filePath, string kbPath)>? _documents;
     private static IAgentContextExecutor? _assistantAgent;
+    private static List<MaIN.Domain.Entities.Message> _conversationHistory = new();
 
     /// <summary>
     /// Initialize the document assistant with loaded documents
@@ -44,6 +45,7 @@ public class DocumentAssistant
     {
         _searchEngine = searchEngine;
         _documents = documents;
+        _conversationHistory.Clear(); // Clear conversation history for new session
 AIHub.Extensions.DisableNotificationsLogs();
 		
         Environment.SetEnvironmentVariable("OPENAI_API_KEY", apiKey);
@@ -118,21 +120,21 @@ AIHub.Extensions.DisableNotificationsLogs();
         if (_assistantAgent == null)
             throw new InvalidOperationException("Assistant not initialized. Call Initialize() first.");
 
-        var messages = new List<MaIN.Domain.Entities.Message>
+        // Add user message to conversation history
+        var userMsg = new MaIN.Domain.Entities.Message
         {
-            new MaIN.Domain.Entities.Message
-            {
-                Content = userMessage,
-                Role = "user",
-                Time = DateTime.UtcNow,
-                Type = MessageType.CloudLLM
-            }
+            Content = userMessage,
+            Role = "user",
+            Time = DateTime.UtcNow,
+            Type = MessageType.CloudLLM
         };
+        _conversationHistory.Add(userMsg);
 
         var channel = System.Threading.Channels.Channel.CreateUnbounded<string>();
+        var assistantResponse = new System.Text.StringBuilder();
 
         var processTask = _assistantAgent.ProcessAsync(
-            messages,
+            _conversationHistory, // Use full conversation history
             tokenCallback: (token) =>
             {
                 channel.Writer.TryWrite(token.Text);
@@ -148,7 +150,20 @@ AIHub.Extensions.DisableNotificationsLogs();
 
         await foreach (var text in channel.Reader.ReadAllAsync())
         {
+            assistantResponse.Append(text);
             yield return text;
+        }
+
+        // Add assistant response to conversation history
+        if (assistantResponse.Length > 0)
+        {
+            _conversationHistory.Add(new MaIN.Domain.Entities.Message
+            {
+                Content = assistantResponse.ToString(),
+                Role = "assistant",
+                Time = DateTime.UtcNow,
+                Type = MessageType.CloudLLM
+            });
         }
     }
 
@@ -160,6 +175,8 @@ AIHub.Extensions.DisableNotificationsLogs();
         if (_searchEngine == null)
             return "Error: Search engine not initialized";
 
+        // Tool message on new line
+        AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine($"[dim]🔍 Searching for: {args.query}...[/]");
 
         var results = await _searchEngine.SearchAllAsync(args.query);
@@ -196,6 +213,8 @@ AIHub.Extensions.DisableNotificationsLogs();
         if (_documents == null)
             return "Error: Documents not loaded";
 
+        // Tool message on new line
+        AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine($"[dim]📖 Reading page {args.pageNumber} from {args.documentName}...[/]");
 
         // Find the document
