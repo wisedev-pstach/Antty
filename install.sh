@@ -51,22 +51,31 @@ fi
 # Make the executable runnable
 chmod +x "$EXE_PATH"
 
-# Create symlink in /usr/local/bin
-echo "🔧 Creating symlink..."
-SYMLINK_PATH="/usr/local/bin/antty"
+# Create wrapper script in /usr/local/bin
+echo "🔧 Creating launcher script..."
+LAUNCHER_PATH="/usr/local/bin/antty"
+
+# Create wrapper script that runs from publish directory
+WRAPPER_SCRIPT="#!/bin/bash
+# Antty launcher - runs from publish directory to find native libraries
+cd \"$PUBLISH_PATH\"
+exec \"$EXE_PATH\" \"\$@\"
+"
 
 # Check if we need sudo
 if [ -w "/usr/local/bin" ]; then
-    ln -sf "$EXE_PATH" "$SYMLINK_PATH"
+    echo "$WRAPPER_SCRIPT" > "$LAUNCHER_PATH"
+    chmod +x "$LAUNCHER_PATH"
 else
-    echo "Creating symlink requires sudo privileges..."
-    sudo ln -sf "$EXE_PATH" "$SYMLINK_PATH"
+    echo "Creating launcher requires sudo privileges..."
+    echo "$WRAPPER_SCRIPT" | sudo tee "$LAUNCHER_PATH" > /dev/null
+    sudo chmod +x "$LAUNCHER_PATH"
 fi
 
 if [ $? -eq 0 ]; then
-    echo "✓ Symlink created: $SYMLINK_PATH"
+    echo "✓ Launcher created: $LAUNCHER_PATH"
 else
-    echo "❌ Failed to create symlink"
+    echo "❌ Failed to create launcher"
     exit 1
 fi
 

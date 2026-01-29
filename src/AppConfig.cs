@@ -7,6 +7,10 @@ public class AppConfig
     public List<string> SelectedDocuments { get; set; } = new();
     public string ApiKey { get; set; } = "sk-YOUR-OPENAI-KEY-HERE";
 
+    // Embedding provider configuration
+    public string EmbeddingProvider { get; set; } = "openai"; // "openai" or "local"
+    public string LocalModelPath { get; set; } = "";
+
     private static readonly string ConfigPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Antty",

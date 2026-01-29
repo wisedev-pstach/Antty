@@ -11,11 +11,20 @@ class Program
         // Enable UTF-8 encoding for emoji support
         Console.OutputEncoding = System.Text.Encoding.UTF8;
 
+        // Configure LLamaSharp native library path
+        var appDir = AppContext.BaseDirectory;
+        var libPath = Path.Combine(appDir, "libllama.dylib");
+        if (File.Exists(libPath))
+        {
+            LLama.Native.NativeLibraryConfig.LLama.WithLibrary(libPath);
+        }
+
         // Initialize MaIN.NET framework for console apps
-        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
-        services.AddMaIN(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
-        var serviceProvider = services.BuildServiceProvider();
-        serviceProvider.UseMaIN();
+        // TEMPORARILY DISABLED TO DEBUG
+        // var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        // services.AddMaIN(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        // var serviceProvider = services.BuildServiceProvider();
+        // serviceProvider.UseMaIN();
 
         // Display fancy header
         AnsiConsole.Write(
@@ -29,20 +38,63 @@ class Program
         // Load configuration
         var config = AppConfig.Load();
 
-        // Check if API key is configured
-        if (config.ApiKey == "sk-YOUR-OPENAI-KEY-HERE")
+        // 1. Choose Embedding Provider
+        // TEMPORARILY DISABLED LOCAL PROVIDER - DEBUGGING LLAMASHARP
+        AnsiConsole.MarkupLine("[yellow]Note: Local provider temporarily disabled for testing[/]");
+        AnsiConsole.WriteLine();
+
+        bool useLocalProvider = false; // Force OpenAI for now
+
+        /*
+        AnsiConsole.Write(new Rule("[bold cyan]🔧 EMBEDDING CONFIGURATION[/]").RuleStyle("cyan"));
+        AnsiConsole.WriteLine();
+
+        var providerChoice = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("[cyan]Choose embedding provider:[/]")
+                .PageSize(10)
+                .AddChoices(new[] {
+                    "🌐 OpenAI (Cloud, requires API key)",
+                    "💻 Local (Offline, uses GGUF models)"
+                }));
+
+        bool useLocalProvider = providerChoice.StartsWith("💻");
+
+        if (useLocalProvider)
         {
-            AnsiConsole.MarkupLine("[yellow]⚠ API Key not configured![/]");
-            config.ApiKey = AnsiConsole.Prompt(
-                new TextPrompt<string>("[cyan]Enter your OpenAI API Key:[/]")
-                    .PromptStyle("green")
-                    .Secret());
-            config.Save();
-            AnsiConsole.MarkupLine("[green]✓[/] API Key saved!");
-            AnsiConsole.WriteLine();
+            config.EmbeddingProvider = "local";
+            config.LocalModelPath = await DownloadNomicModelAsync();
+        }
+        else
+        */
+        {
+            config.EmbeddingProvider = "openai";
+
+            // Check if API key is configured
+            if (config.ApiKey == "sk-YOUR-OPENAI-KEY-HERE")
+            {
+                AnsiConsole.MarkupLine("[yellow]⚠ API Key not configured![/]");
+                config.ApiKey = AnsiConsole.Prompt(
+                    new TextPrompt<string>("[cyan]Enter your OpenAI API Key:[/]")
+                        .PromptStyle("green")
+                        .Secret());
+                config.Save();
+                AnsiConsole.MarkupLine("[green]✓[/] API Key saved!");
+                AnsiConsole.WriteLine();
+            }
         }
 
-        // 1. Scan current directory for supported documents
+        config.Save();
+        AnsiConsole.WriteLine();
+
+        // 2. Create embedding provider based on user choice
+        using var embeddingProvider = useLocalProvider
+            ? (Antty.Embedding.IEmbeddingProvider)new Antty.Embedding.LocalEmbeddingProvider(config.LocalModelPath)
+            : new Antty.Embedding.OpenAIEmbeddingProvider(config.ApiKey);
+
+        AnsiConsole.WriteLine();
+
+        // 3. Scan current directory for supported documents
         var currentDir = Directory.GetCurrentDirectory();
         var supportedExtensions = new[] { ".pdf", ".txt", ".md", ".json" };
         var availableFiles = supportedExtensions
@@ -104,11 +156,11 @@ class Program
 
         AnsiConsole.WriteLine();
 
-        // 3. Build knowledge bases if missing
+        // 4. Build knowledge bases if missing
         var documentsToProcess = new List<(string filePath, string kbPath)>();
         int existingKBCount = 0;
         int newKBCount = 0;
-        
+
         foreach (var filePath in selectedPaths)
         {
             var kbPath = AppConfig.GetKnowledgeBasePath(filePath);
@@ -120,7 +172,7 @@ class Program
                 AnsiConsole.MarkupLine($"[yellow]⚙ Building knowledge base for:[/] [cyan]{Path.GetFileName(filePath)}[/]");
                 AnsiConsole.WriteLine();
 
-                await IngestionBuilder.BuildDatabaseAsync(filePath, config.ApiKey, kbPath);
+                await IngestionBuilder.BuildDatabaseAsync(filePath, embeddingProvider, kbPath);
             }
             else
             {
@@ -142,9 +194,9 @@ class Program
         AnsiConsole.Write(new Rule("[dim]Loading Documents[/]").RuleStyle("dim"));
         AnsiConsole.WriteLine();
 
-        // 4. Load all documents into multi-search engine
+        // 5. Load all documents into multi-search engine
         var multiEngine = new MultiBookSearchEngine();
-        multiEngine.LoadDocuments(config.ApiKey, documentsToProcess);
+        multiEngine.LoadDocuments(embeddingProvider, documentsToProcess);
 
         if (multiEngine.LoadedDocumentCount == 0)
         {
@@ -152,7 +204,7 @@ class Program
             return;
         }
 
-        // 5. Main menu loop
+        // 6. Main menu loop
         bool running = true;
         while (running)
         {
@@ -162,7 +214,7 @@ class Program
 
             // Show loaded documents info
             AnsiConsole.MarkupLine($"[dim]Loaded documents: {multiEngine.LoadedDocumentCount}[/]");
-            
+
             var choice = AnsiConsole.Prompt(
                 new SelectionPrompt<string>()
                     .Title("[cyan]What would you like to do?[/]")
@@ -306,13 +358,14 @@ class Program
                 bool firstToken = true;
                 var thinkingTask = Task.Run(async () =>
                 {
-                    // Show thinking animation
-                    var dots = "";
+                    // Show thinking animation as a temporary status line (no "Assistant:" prefix)
+                    var spinner = new[] { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" };
+                    int spinnerIndex = 0;
                     while (firstToken)
                     {
-                        AnsiConsole.Markup($"\r[bold green]Assistant:[/] [dim]thinking{dots}[/]   ");
-                        dots = dots.Length >= 3 ? "" : dots + ".";
-                        await Task.Delay(400);
+                        AnsiConsole.Markup($"\r[dim]{spinner[spinnerIndex]} thinking...[/]   ");
+                        spinnerIndex = (spinnerIndex + 1) % spinner.Length;
+                        await Task.Delay(100);
                     }
                 });
 
@@ -320,13 +373,13 @@ class Program
                 {
                     if (firstToken)
                     {
-                        // Stop animation and clear the line
+                        // Stop animation and clear the thinking indicator completely
                         firstToken = false;
-                        await Task.Delay(100); // Let animation stop
-                        AnsiConsole.Markup("\r                                        \r"); // Clear line
-                        AnsiConsole.Markup($"[bold green]Assistant:[/] ");
+                        await Task.Delay(50); // Let animation stop
+                        AnsiConsole.Markup("\r                                                  \r"); // Clear line completely
+                        AnsiConsole.Markup($"[bold green]Assistant:[/] "); // Now show "Assistant:" label
                     }
-                    
+
                     AnsiConsole.Markup($"[green]{token.EscapeMarkup()}[/]");
                 }
             }
@@ -400,5 +453,76 @@ class Program
         }
 
         await Task.CompletedTask;
+    }
+
+    static async Task<string> DownloadNomicModelAsync()
+    {
+        var modelsDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Antty",
+            "models"
+        );
+
+        if (!Directory.Exists(modelsDir))
+            Directory.CreateDirectory(modelsDir);
+
+        var modelPath = Path.Combine(modelsDir, "nomicv2.gguf");
+
+        if (!File.Exists(modelPath))
+        {
+            AnsiConsole.MarkupLine("[yellow]⬇ Downloading Nomic embedding model (first time only)...[/]");
+            AnsiConsole.MarkupLine("[dim]From: https://huggingface.co/Inza124/Nomic[/]");
+            AnsiConsole.WriteLine();
+
+            await AnsiConsole.Progress()
+                .Columns(
+                    new TaskDescriptionColumn(),
+                    new ProgressBarColumn(),
+                    new PercentageColumn(),
+                    new RemainingTimeColumn(),
+                    new SpinnerColumn()
+                )
+                .StartAsync(async ctx =>
+                {
+                    var downloadTask = ctx.AddTask("[cyan]Downloading nomicv2.gguf[/]");
+
+                    using var httpClient = new HttpClient();
+                    httpClient.Timeout = TimeSpan.FromMinutes(10);
+
+                    var url = "https://huggingface.co/Inza124/Nomic/resolve/main/nomicv2.gguf";
+
+                    using var response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+                    response.EnsureSuccessStatusCode();
+
+                    var totalBytes = response.Content.Headers.ContentLength ?? 0;
+                    downloadTask.MaxValue = totalBytes;
+
+                    using var contentStream = await response.Content.ReadAsStreamAsync();
+                    using var fileStream = new FileStream(modelPath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true);
+
+                    var buffer = new byte[8192];
+                    long totalRead = 0;
+                    int bytesRead;
+
+                    while ((bytesRead = await contentStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                    {
+                        await fileStream.WriteAsync(buffer, 0, bytesRead);
+                        totalRead += bytesRead;
+                        downloadTask.Value = totalRead;
+                    }
+                });
+
+            var fileSizeMB = new FileInfo(modelPath).Length / (1024.0 * 1024.0);
+            AnsiConsole.MarkupLine($"[green]✓[/] Model downloaded: [cyan]{fileSizeMB:F1} MB[/]");
+            AnsiConsole.WriteLine();
+        }
+        else
+        {
+            var fileSizeMB = new FileInfo(modelPath).Length / (1024.0 * 1024.0);
+            AnsiConsole.MarkupLine($"[green]✓[/] Using cached Nomic model ([cyan]{fileSizeMB:F1} MB[/])");
+            AnsiConsole.WriteLine();
+        }
+
+        return modelPath;
     }
 }

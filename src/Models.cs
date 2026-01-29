@@ -1,6 +1,22 @@
 namespace Antty;
 
-// 1. Storage Model (Saved to JSON)
+// 1. Knowledge Base Container (Saved to JSON)
+public class KnowledgeBase
+{
+    public KnowledgeBaseMetadata Metadata { get; set; } = new();
+    public List<RawChunk> Chunks { get; set; } = new();
+}
+
+// 2. Knowledge Base Metadata
+public class KnowledgeBaseMetadata
+{
+    public string Provider { get; set; } = "openai";
+    public string ModelName { get; set; } = "text-embedding-3-small";
+    public int Dimensions { get; set; } = 512;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+// 3. Storage Model (Individual Chunk)
 public class RawChunk
 {
     public int Id { get; set; }
@@ -9,7 +25,7 @@ public class RawChunk
     public float[] Vector { get; set; } = Array.Empty<float>();
 }
 
-// 2. Output Model (Returned to User)
+// 4. Output Model (Returned to User)
 public class RawSearchResult
 {
     public string Text { get; set; } = string.Empty;  // The raw paragraph

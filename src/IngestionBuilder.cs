@@ -1,6 +1,4 @@
-using OpenAI;
-using Azure.AI.OpenAI;
-using OpenAI.Embeddings;
+using Antty.Embedding;
 using System.Text.Json;
 using UglyToad.PdfPig;
 using Spectre.Console;
@@ -9,19 +7,17 @@ namespace Antty;
 
 public static class IngestionBuilder
 {
-    public static async Task BuildDatabaseAsync(string filePath, string apiKey, string outputPath)
+    public static async Task BuildDatabaseAsync(string filePath, IEmbeddingProvider provider, string outputPath)
     {
         AnsiConsole.Write(new Rule("[bold yellow]🚀 STARTING INGESTION[/]").RuleStyle("yellow"));
         AnsiConsole.WriteLine();
 
-        var client = new OpenAIClient(apiKey);
-        var embeddingClient = client.GetEmbeddingClient("text-embedding-3-small");
         var chunks = new List<RawChunk>();
         int globalId = 0;
 
         // 1. EXTRACT TEXT FROM FILE (supports PDF, TXT, MD, JSON)
         var extractedText = await ExtractTextFromFileAsync(filePath);
-        
+
         await AnsiConsole.Progress()
             .Columns(
                 new TaskDescriptionColumn(),
@@ -85,15 +81,11 @@ public static class IngestionBuilder
 
                     try
                     {
-                        // Request 512 dimensions to save RAM and CPU
-                        var response = await embeddingClient.GenerateEmbeddingsAsync(batchTexts, new EmbeddingGenerationOptions
-                        {
-                            Dimensions = 512
-                        });
+                        var embeddings = await provider.GenerateEmbeddingsAsync(batchTexts);
 
                         for (int j = 0; j < batch.Count; j++)
                         {
-                            batch[j].Vector = response.Value[j].ToFloats().ToArray();
+                            batch[j].Vector = embeddings[j];
                         }
 
                         task.Increment(batch.Count);
@@ -107,14 +99,26 @@ public static class IngestionBuilder
 
         AnsiConsole.WriteLine();
 
-        // 3. SAVE TO DISK
+        // 3. SAVE TO DISK WITH METADATA
+        var knowledgeBase = new KnowledgeBase
+        {
+            Metadata = new KnowledgeBaseMetadata
+            {
+                Provider = provider.ProviderName,
+                ModelName = provider.ModelName,
+                Dimensions = provider.Dimensions,
+                CreatedAt = DateTime.UtcNow
+            },
+            Chunks = chunks
+        };
+
         var jsonOptions = new JsonSerializerOptions { WriteIndented = true };
-        string jsonString = JsonSerializer.Serialize(chunks, jsonOptions);
+        string jsonString = JsonSerializer.Serialize(knowledgeBase, jsonOptions);
         await File.WriteAllTextAsync(outputPath, jsonString);
 
         var fileSize = new FileInfo(outputPath).Length / 1024;
         AnsiConsole.Write(new Panel(
-            new Markup($"[green]✅ Database saved to[/] [bold cyan]{Path.GetFileName(outputPath)}[/]\n[dim]Size: {fileSize} KB[/]")
+            new Markup($"[green]✅ Database saved to[/] [bold cyan]{Path.GetFileName(outputPath)}[/]\n[dim]Provider: {provider.ProviderName} ({provider.ModelName})\nSize: {fileSize} KB[/]")
         )
         .BorderColor(Color.Green)
         .Padding(1, 0));

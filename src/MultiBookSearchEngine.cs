@@ -1,8 +1,4 @@
-using OpenAI;
-using Azure.AI.OpenAI;
-using OpenAI.Embeddings;
-using System.Numerics.Tensors;
-using System.Text.Json;
+using Antty.Embedding;
 using Spectre.Console;
 
 namespace Antty;
@@ -17,7 +13,7 @@ public class MultiBookSearchEngine
     /// <summary>
     /// Load multiple documents into memory for searching
     /// </summary>
-    public void LoadDocuments(string apiKey, List<(string bookPath, string knowledgeBasePath)> documents)
+    public void LoadDocuments(IEmbeddingProvider provider, List<(string bookPath, string knowledgeBasePath)> documents)
     {
         _engines.Clear();
 
@@ -31,7 +27,7 @@ public class MultiBookSearchEngine
 
             try
             {
-                var engine = new SearchEngine(apiKey, kbPath);
+                var engine = new SearchEngine(provider, kbPath);
                 var bookName = Path.GetFileNameWithoutExtension(bookPath);
                 _engines.Add((bookName, engine));
             }
@@ -62,7 +58,7 @@ public class MultiBookSearchEngine
         foreach (var (bookName, engine) in _engines)
         {
             var results = await engine.SearchBookAsync(userQuestion);
-            
+
             // Add book source to results
             foreach (var result in results)
             {

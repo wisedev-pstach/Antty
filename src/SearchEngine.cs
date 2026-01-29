@@ -1,6 +1,4 @@
-using OpenAI;
-using Azure.AI.OpenAI;
-using OpenAI.Embeddings;
+using Antty.Embedding;
 using System.Numerics.Tensors;
 using System.Text.Json;
 using Spectre.Console;
@@ -9,31 +7,42 @@ namespace Antty;
 
 public class SearchEngine
 {
-    private readonly EmbeddingClient _embeddingClient;
+    private readonly IEmbeddingProvider _embeddingProvider;
     private readonly List<RawChunk> _database;
+    private readonly KnowledgeBaseMetadata _metadata;
 
-    public SearchEngine(string apiKey, string dbPath)
+    public SearchEngine(IEmbeddingProvider provider, string dbPath)
     {
-        var client = new OpenAIClient(apiKey);
-        _embeddingClient = client.GetEmbeddingClient("text-embedding-3-small");
+        _embeddingProvider = provider;
 
         if (!File.Exists(dbPath))
             throw new FileNotFoundException("Database not found! Run Ingestion first.");
 
         // Load Data into RAM
-        List<RawChunk>? loadedDatabase = null;
+        KnowledgeBase? loadedKB = null;
         AnsiConsole.Status()
             .Spinner(Spinner.Known.Dots)
             .SpinnerStyle(Style.Parse("cyan bold"))
             .Start($"[cyan]Loading knowledge base...[/]", ctx =>
             {
                 var json = File.ReadAllText(dbPath);
-                loadedDatabase = JsonSerializer.Deserialize<List<RawChunk>>(json);
+                loadedKB = JsonSerializer.Deserialize<KnowledgeBase>(json);
             });
 
-        _database = loadedDatabase ?? throw new InvalidOperationException("Failed to load database");
+        if (loadedKB == null)
+            throw new InvalidOperationException("Failed to load database");
 
-        AnsiConsole.MarkupLine($"[green]✓[/] Loaded [bold cyan]{_database.Count}[/] chunks into memory");
+        _metadata = loadedKB.Metadata;
+        _database = loadedKB.Chunks;
+
+        // Validate provider compatibility
+        if (_metadata.Provider != provider.ProviderName)
+        {
+            AnsiConsole.MarkupLine($"[yellow]⚠ Warning: Knowledge base was created with '{_metadata.Provider}' but using '{provider.ProviderName}' provider[/]");
+            AnsiConsole.MarkupLine($"[yellow]  Embeddings may not be compatible. Consider rebuilding the knowledge base.[/]");
+        }
+
+        AnsiConsole.MarkupLine($"[green]✓[/] Loaded [bold cyan]{_database.Count}[/] chunks [dim]({_metadata.Provider}/{_metadata.ModelName})[/]");
         AnsiConsole.WriteLine();
     }
 
@@ -43,7 +52,7 @@ public class SearchEngine
     /// </summary>
     public async Task<List<RawSearchResult>> SearchBookAsync(string userQuestion)
     {
-        // 1. Embed Question (Must match dimensions: 512)
+        // 1. Embed Question
         float[] queryVector = Array.Empty<float>();
 
         await AnsiConsole.Status()
@@ -51,11 +60,7 @@ public class SearchEngine
             .SpinnerStyle(Style.Parse("yellow bold"))
             .StartAsync("[yellow]Analyzing question...[/]", async ctx =>
             {
-                var response = await _embeddingClient.GenerateEmbeddingAsync(userQuestion, new EmbeddingGenerationOptions
-                {
-                    Dimensions = 512
-                });
-                queryVector = response.Value.ToFloats().ToArray();
+                queryVector = await _embeddingProvider.GenerateEmbeddingAsync(userQuestion);
             });
 
         // 2. Vector Math Search
