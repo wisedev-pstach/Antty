@@ -41,75 +41,143 @@ public class DocumentAssistant
     /// <summary>
     /// Initialize the document assistant with loaded documents
     /// </summary>
-    public static async Task Initialize(string apiKey, MultiBookSearchEngine searchEngine, List<(string filePath, string kbPath)> documents)
+    public static async Task Initialize(string apiKey, MultiBookSearchEngine searchEngine, List<(string filePath, string kbPath)> documents, bool useLocalAI, string localModelName)
     {
         _searchEngine = searchEngine;
         _documents = documents;
         _conversationHistory.Clear(); // Clear conversation history for new session
-AIHub.Extensions.DisableNotificationsLogs();
+        AIHub.Extensions.DisableNotificationsLogs();
 		
-        Environment.SetEnvironmentVariable("OPENAI_API_KEY", apiKey);
+        if (useLocalAI)
+        {
+            // Local AI with BackendType.Self
+            _assistantAgent = await AIHub.Agent()
+                .WithModel(localModelName)
+                .WithBackend(BackendType.Self)
+                .WithKnowledge(KnowledgeBuilder.Instance.DisablePersistence())
+                .WithInitialPrompt(GetSystemPrompt())
+                .WithId("AnttyDocAssistant")
+                .WithTools(new ToolsConfigurationBuilder()
+                    .AddTool<SearchDocumentsArgs>(
+                        "search_documents",
+                        "INITIAL DISCOVERY ONLY: Use this ONCE at the start to find which document and page contains relevant information. Returns brief passages with document name and page number. After getting results, ALWAYS use read_page to get full context instead of searching again.",
+                        new
+                        {
+                            type = "object",
+                            properties = new
+                            {
+                                query = new
+                                {
+                                    type = "string",
+                                    description = "The search query or question to find relevant information"
+                                },
+                                maxResults = new
+                                {
+                                    type = "integer",
+                                    description = "Maximum number of results to return (1-10, default: 5)",
+                                    @default = 5,
+                                    minimum = 1,
+                                    maximum = 10
+                                }
+                            },
+                            required = new[] { "query" }
+                        },
+                        SearchDocuments)
+                    .AddTool<ReadPageArgs>(
+                        "read_page",
+                        "PRIMARY TOOL: After search_documents gives you a page number, ALWAYS use this to read the full page content. This gives you complete information. Use this for follow-up questions instead of searching again. Much more reliable than search for getting detailed information.",
+                        new
+                        {
+                            type = "object",
+                            properties = new
+                            {
+                                documentName = new
+                                {
+                                    type = "string",
+                                    description = "Name of the document (e.g., 'architecture', 'api-docs')"
+                                },
+                                pageNumber = new
+                                {
+                                    type = "integer",
+                                    description = "Page number to read",
+                                    minimum = 1
+                                }
+                            },
+                            required = new[] { "documentName", "pageNumber" }
+                        },
+                        ReadPage)
+                    .WithToolChoice("auto")
+                    .Build())
+                .WithSteps(
+                    StepBuilder.Instance.Answer().Build())
+                .CreateAsync();
+        }
+        else
+        {
+            // Cloud AI with BackendType.OpenAi
+            Environment.SetEnvironmentVariable("OPENAI_API_KEY", apiKey);
 
-        _assistantAgent = await AIHub.Agent()
-            .WithModel("gpt-5-nano")
-            .WithBackend(BackendType.OpenAi)
-            .WithKnowledge(KnowledgeBuilder.Instance.DisablePersistence())
-            .WithInitialPrompt(GetSystemPrompt())
-            .WithId("AnttyDocAssistant")
-            .WithTools(new ToolsConfigurationBuilder()
-                .AddTool<SearchDocumentsArgs>(
-                    "search_documents",
-                    "INITIAL DISCOVERY ONLY: Use this ONCE at the start to find which document and page contains relevant information. Returns brief passages with document name and page number. After getting results, ALWAYS use read_page to get full context instead of searching again.",
-                    new
-                    {
-                        type = "object",
-                        properties = new
+            _assistantAgent = await AIHub.Agent()
+                .WithModel("gpt-5")
+                .WithBackend(BackendType.OpenAi)
+                .WithKnowledge(KnowledgeBuilder.Instance.DisablePersistence())
+                .WithInitialPrompt(GetSystemPrompt())
+                .WithId("AnttyDocAssistant")
+                .WithTools(new ToolsConfigurationBuilder()
+                    .AddTool<SearchDocumentsArgs>(
+                        "search_documents",
+                        "INITIAL DISCOVERY ONLY: Use this ONCE at the start to find which document and page contains relevant information. Returns brief passages with document name and page number. After getting results, ALWAYS use read_page to get full context instead of searching again.",
+                        new
                         {
-                            query = new
+                            type = "object",
+                            properties = new
                             {
-                                type = "string",
-                                description = "The search query or question to find relevant information"
+                                query = new
+                                {
+                                    type = "string",
+                                    description = "The search query or question to find relevant information"
+                                },
+                                maxResults = new
+                                {
+                                    type = "integer",
+                                    description = "Maximum number of results to return (1-10, default: 5)",
+                                    @default = 5,
+                                    minimum = 1,
+                                    maximum = 10
+                                }
                             },
-                            maxResults = new
-                            {
-                                type = "integer",
-                                description = "Maximum number of results to return (1-10, default: 5)",
-                                @default = 5,
-                                minimum = 1,
-                                maximum = 10
-                            }
+                            required = new[] { "query" }
                         },
-                        required = new[] { "query" }
-                    },
-                    SearchDocuments)
-                .AddTool<ReadPageArgs>(
-                    "read_page",
-                    "PRIMARY TOOL: After search_documents gives you a page number, ALWAYS use this to read the full page content. This gives you complete information. Use this for follow-up questions instead of searching again. Much more reliable than search for getting detailed information.",
-                    new
-                    {
-                        type = "object",
-                        properties = new
+                        SearchDocuments)
+                    .AddTool<ReadPageArgs>(
+                        "read_page",
+                        "PRIMARY TOOL: After search_documents gives you a page number, ALWAYS use this to read the full page content. This gives you complete information. Use this for follow-up questions instead of searching again. Much more reliable than search for getting detailed information.",
+                        new
                         {
-                            documentName = new
+                            type = "object",
+                            properties = new
                             {
-                                type = "string",
-                                description = "Name of the document (e.g., 'architecture', 'api-docs')"
+                                documentName = new
+                                {
+                                    type = "string",
+                                    description = "Name of the document (e.g., 'architecture', 'api-docs')"
+                                },
+                                pageNumber = new
+                                {
+                                    type = "integer",
+                                    description = "Page number to read",
+                                    minimum = 1
+                                }
                             },
-                            pageNumber = new
-                            {
-                                type = "integer",
-                                description = "Page number to read",
-                                minimum = 1
-                            }
+                            required = new[] { "documentName", "pageNumber" }
                         },
-                        required = new[] { "documentName", "pageNumber" }
-                    },
-                    ReadPage)
-                .WithToolChoice("auto")
-                .Build())
-            .WithSteps(
-                StepBuilder.Instance.Answer().Build())
-            .CreateAsync();
+                        ReadPage)
+                    .WithToolChoice("auto")
+                    .Build())
+                .WithSteps(
+                    StepBuilder.Instance.Answer().Build())
+                .CreateAsync();
+        }
     }
 
     /// <summary>

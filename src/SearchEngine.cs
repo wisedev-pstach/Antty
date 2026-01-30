@@ -26,7 +26,44 @@ public class SearchEngine
             .Start($"[cyan]Loading knowledge base...[/]", ctx =>
             {
                 var json = File.ReadAllText(dbPath);
-                loadedKB = JsonSerializer.Deserialize<KnowledgeBase>(json);
+                
+                // Try new format first (KnowledgeBase with Metadata)
+                try
+                {
+                    loadedKB = JsonSerializer.Deserialize<KnowledgeBase>(json);
+                }
+                catch (JsonException)
+                {
+                    // Fall back to old format (RawChunk array)
+                    try
+                    {
+                        var oldFormatChunks = JsonSerializer.Deserialize<List<RawChunk>>(json);
+                        if (oldFormatChunks != null)
+                        {
+                            AnsiConsole.MarkupLine("[yellow]⚠ Migrating old knowledge base format...[/]");
+                            loadedKB = new KnowledgeBase
+                            {
+                                Metadata = new KnowledgeBaseMetadata
+                                {
+                                    Provider = provider.ProviderName,
+                                    ModelName = provider.ModelName,
+                                    Dimensions = provider.Dimensions,
+                                    CreatedAt = DateTime.UtcNow
+                                },
+                                Chunks = oldFormatChunks
+                            };
+                            
+                            // Save in new format
+                            var newJson = JsonSerializer.Serialize(loadedKB, new JsonSerializerOptions { WriteIndented = true });
+                            File.WriteAllText(dbPath, newJson);
+                            AnsiConsole.MarkupLine("[green]✓[/] Migrated to new format");
+                        }
+                    }
+                    catch
+                    {
+                        throw new InvalidOperationException("Invalid knowledge base format");
+                    }
+                }
             });
 
         if (loadedKB == null)
@@ -62,6 +99,16 @@ public class SearchEngine
             {
                 queryVector = await _embeddingProvider.GenerateEmbeddingAsync(userQuestion);
             });
+
+        // Validate dimensions match
+        if (queryVector.Length != _metadata.Dimensions)
+        {
+            throw new InvalidOperationException(
+                $"Dimension mismatch! Query vector is {queryVector.Length}D but knowledge base expects {_metadata.Dimensions}D.\n" +
+                $"Knowledge base was created with: {_metadata.Provider}/{_metadata.ModelName}\n" +
+                $"Current provider: {_embeddingProvider.ProviderName}/{_embeddingProvider.ModelName}\n" +
+                $"Please rebuild the knowledge base with the current embedding provider.");
+        }
 
         // 2. Vector Math Search
         var results = new List<RawSearchResult>();

@@ -3,6 +3,7 @@ using Spectre.Console;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using MaIN.Core;
+using MaIN.Core.Hub;
 
 class Program
 {
@@ -18,13 +19,8 @@ class Program
         {
             LLama.Native.NativeLibraryConfig.LLama.WithLibrary(libPath);
         }
-
-        // Initialize MaIN.NET framework for console apps
-        // TEMPORARILY DISABLED TO DEBUG
-        // var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
-        // services.AddMaIN(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
-        // var serviceProvider = services.BuildServiceProvider();
-        // serviceProvider.UseMaIN();
+        
+        AIHub.Extensions.DisableLLamaLogs();
 
         // Display fancy header
         AnsiConsole.Write(
@@ -39,13 +35,6 @@ class Program
         var config = AppConfig.Load();
 
         // 1. Choose Embedding Provider
-        // TEMPORARILY DISABLED LOCAL PROVIDER - DEBUGGING LLAMASHARP
-        AnsiConsole.MarkupLine("[yellow]Note: Local provider temporarily disabled for testing[/]");
-        AnsiConsole.WriteLine();
-
-        bool useLocalProvider = false; // Force OpenAI for now
-
-        /*
         AnsiConsole.Write(new Rule("[bold cyan]🔧 EMBEDDING CONFIGURATION[/]").RuleStyle("cyan"));
         AnsiConsole.WriteLine();
 
@@ -66,7 +55,6 @@ class Program
             config.LocalModelPath = await DownloadNomicModelAsync();
         }
         else
-        */
         {
             config.EmbeddingProvider = "openai";
 
@@ -91,6 +79,65 @@ class Program
         using var embeddingProvider = useLocalProvider
             ? (Antty.Embedding.IEmbeddingProvider)new Antty.Embedding.LocalEmbeddingProvider(config.LocalModelPath)
             : new Antty.Embedding.OpenAIEmbeddingProvider(config.ApiKey);
+
+        AnsiConsole.WriteLine();
+        
+        // 2. Choose AI Model (for DocumentAssistant)
+        AnsiConsole.Write(new Rule("[bold cyan]🤖 AI MODEL CONFIGURATION[/]").RuleStyle("cyan"));
+        AnsiConsole.WriteLine();
+
+        bool useLocalAI;
+        string localModelName = "";
+
+        if (useLocalProvider)
+        {
+            // Local embeddings → only show local AI models
+            var modelChoice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[cyan]Choose local AI model for document assistant:[/]")
+                    .PageSize(10)
+                    .AddChoices(new[] {
+                        "💻 Gemma3-4b (4B params, fastest)",
+                        "💻 Llama3.1-8b (8B params, balanced)",
+                        "💻 Qwen3-14b (14B params, most capable)"
+                    }));
+
+            useLocalAI = true;
+            localModelName = modelChoice switch
+            {
+                var s when s.Contains("Gemma3-4b") => "gemma3:4b",
+                var s when s.Contains("Llama3.1-8b") => "llama3.1:8b",
+                var s when s.Contains("Qwen3-14b") => "qwen3:14b",
+                _ => "gemma3:4b"
+            };
+
+            // Initialize MaIN.NET and download model
+            var modelsDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Antty",
+                "models"
+            );
+            MaINBootstrapper.Initialize(configureSettings: (settings) =>
+            {
+                settings.ModelsPath = modelsDir;
+            });
+
+            await DownloadLocalModelAsync(localModelName);
+        }
+        else
+        {
+            // OpenAI embeddings → only show OpenAI AI model
+            useLocalAI = false;
+            
+            // Ensure API key is set
+            if (string.IsNullOrWhiteSpace(config.ApiKey))
+            {
+                AnsiConsole.MarkupLine("[red]API key required for OpenAI![/]");
+                return;
+            }
+
+            AnsiConsole.MarkupLine("[cyan]Using OpenAI GPT-5-nano for document assistant[/]");
+        }
 
         AnsiConsole.WriteLine();
 
@@ -231,7 +278,7 @@ class Program
 
             if (choice.StartsWith("💬"))
             {
-                await TalkToAssistantAsync(config.ApiKey, multiEngine, documentsToProcess);
+                await TalkToAssistantAsync(config.ApiKey, multiEngine, documentsToProcess, useLocalAI, localModelName);
             }
             else if (choice.StartsWith("🔍"))
             {
@@ -320,7 +367,7 @@ class Program
         }
     }
 
-    static async Task TalkToAssistantAsync(string apiKey, MultiBookSearchEngine multiEngine, List<(string filePath, string kbPath)> documents)
+    static async Task TalkToAssistantAsync(string apiKey, MultiBookSearchEngine multiEngine, List<(string filePath, string kbPath)> documents, bool useLocalAI, string localModelName)
     {
         AnsiConsole.Write(new Rule("[bold cyan]💬 TALK TO ASSISTANT[/]").RuleStyle("cyan"));
         AnsiConsole.WriteLine();
@@ -329,7 +376,7 @@ class Program
         AnsiConsole.MarkupLine("[dim]Initializing AI assistant...[/]");
         try
         {
-            await DocumentAssistant.Initialize(apiKey, multiEngine, documents);
+            await DocumentAssistant.Initialize(apiKey, multiEngine, documents, useLocalAI, localModelName);
             AnsiConsole.MarkupLine("[green]✓[/] Assistant ready!");
         }
         catch (Exception ex)
@@ -524,5 +571,89 @@ class Program
         }
 
         return modelPath;
+    }
+
+    static async Task DownloadLocalModelAsync(string modelName)
+    {
+        var modelInfo = modelName switch
+        {
+            "gemma3:4b" => ("gemma3-4b.gguf", "https://huggingface.co/Inza124/Gemma3-4b/resolve/main/gemma3-4b.gguf"),
+            "llama3.1:8b" => ("Llama3.1-maIN.gguf", "https://huggingface.co/Inza124/Llama3.1_8b/resolve/main/Llama3.1-maIN.gguf"),
+            "qwen3:14b" => ("Qwen3-14b.gguf", "https://huggingface.co/Inza124/Qwen3-14b/resolve/main/Qwen3-14b.gguf"),
+            _ => ("gemma3-4b.gguf", "https://huggingface.co/Inza124/Gemma3-4b/resolve/main/gemma3-4b.gguf")
+        };
+
+        var (fileName, url) = modelInfo;
+        
+        var modelsDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Antty",
+            "models"
+        );
+
+        if (!Directory.Exists(modelsDir))
+            Directory.CreateDirectory(modelsDir);
+
+        var modelPath = Path.Combine(modelsDir, fileName);
+
+        // Check if already downloaded
+        if (File.Exists(modelPath))
+        {
+            var fileSizeMB = new FileInfo(modelPath).Length / (1024.0 * 1024.0);
+            AnsiConsole.MarkupLine($"[green]✓[/] Using cached {fileName} ([cyan]{fileSizeMB:F1} MB[/])");
+            AnsiConsole.WriteLine();
+            
+            // Still need to register with MaIN.NET
+            await AIHub.Model().DownloadAsync(modelName);
+            return;
+        }
+
+        // Download model
+        AnsiConsole.MarkupLine($"[yellow]⬇ Downloading {fileName} (first time only)...[/]");
+        AnsiConsole.MarkupLine($"[dim]From: {url}[/]");
+        AnsiConsole.WriteLine();
+
+        await AnsiConsole.Progress()
+            .Columns(
+                new TaskDescriptionColumn(),
+                new ProgressBarColumn(),
+                new PercentageColumn(),
+                new RemainingTimeColumn(),
+                new SpinnerColumn()
+            )
+            .StartAsync(async ctx =>
+            {
+                var downloadTask = ctx.AddTask($"[cyan]Downloading {fileName}[/]");
+
+                using var httpClient = new HttpClient();
+                httpClient.Timeout = TimeSpan.FromMinutes(30); // Large models need more time
+
+                using var response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+                response.EnsureSuccessStatusCode();
+
+                var totalBytes = response.Content.Headers.ContentLength ?? 0;
+                downloadTask.MaxValue = totalBytes;
+
+                using var contentStream = await response.Content.ReadAsStreamAsync();
+                using var fileStream = new FileStream(modelPath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true);
+
+                var buffer = new byte[8192];
+                long totalRead = 0;
+                int bytesRead;
+
+                while ((bytesRead = await contentStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                {
+                    await fileStream.WriteAsync(buffer, 0, bytesRead);
+                    totalRead += bytesRead;
+                    downloadTask.Value = totalRead;
+                }
+            });
+
+        var downloadedSizeMB = new FileInfo(modelPath).Length / (1024.0 * 1024.0);
+        AnsiConsole.MarkupLine($"[green]✓[/] Model downloaded: [cyan]{downloadedSizeMB:F1} MB[/]");
+        AnsiConsole.WriteLine();
+
+        // Register with MaIN.NET
+        await AIHub.Model().DownloadAsync(modelName);
     }
 }

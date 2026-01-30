@@ -29,7 +29,8 @@ public class LocalEmbeddingProvider : IEmbeddingProvider
         var modelParams = new ModelParams(modelPath)
         {
             PoolingType = LLamaPoolingType.Mean,  // Combine embeddings into single vector
-            GpuLayerCount = 0  // CPU-only
+            GpuLayerCount = DetectGpuLayers(),  // Auto-detect GPU support
+            ContextSize = 8192  // Nomic supports 8192 token context
         };
 
         try
@@ -76,6 +77,27 @@ public class LocalEmbeddingProvider : IEmbeddingProvider
         }
 
         return embeddings;
+    }
+
+    private static int DetectGpuLayers()
+    {
+        try
+        {
+            // Try to detect CUDA availability
+            var deviceCount = NativeApi.llama_max_devices();
+            if (deviceCount > 0)
+            {
+                AnsiConsole.MarkupLine("[green]✓[/] CUDA detected - GPU acceleration enabled");
+                return 999; // Offload all layers to GPU
+            }
+        }
+        catch
+        {
+            // CUDA not available, silently fall back to CPU
+        }
+
+        AnsiConsole.MarkupLine("[yellow]⚠[/] No CUDA detected - using CPU");
+        return 0; // CPU-only
     }
 
     public void Dispose()
