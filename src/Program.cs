@@ -613,47 +613,7 @@ class Program
         AnsiConsole.MarkupLine($"[dim]From: {url}[/]");
         AnsiConsole.WriteLine();
 
-        await AnsiConsole.Progress()
-            .Columns(
-                new TaskDescriptionColumn(),
-                new ProgressBarColumn(),
-                new PercentageColumn(),
-                new RemainingTimeColumn(),
-                new SpinnerColumn()
-            )
-            .StartAsync(async ctx =>
-            {
-                var downloadTask = ctx.AddTask($"[cyan]Downloading {fileName}[/]");
-
-                using var httpClient = new HttpClient();
-                httpClient.Timeout = TimeSpan.FromMinutes(30); // Large models need more time
-
-                using var response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
-                response.EnsureSuccessStatusCode();
-
-                var totalBytes = response.Content.Headers.ContentLength ?? 0;
-                downloadTask.MaxValue = totalBytes;
-
-                using var contentStream = await response.Content.ReadAsStreamAsync();
-                using var fileStream = new FileStream(modelPath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true);
-
-                var buffer = new byte[8192];
-                long totalRead = 0;
-                int bytesRead;
-
-                while ((bytesRead = await contentStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
-                {
-                    await fileStream.WriteAsync(buffer, 0, bytesRead);
-                    totalRead += bytesRead;
-                    downloadTask.Value = totalRead;
-                }
-            });
-
-        var downloadedSizeMB = new FileInfo(modelPath).Length / (1024.0 * 1024.0);
-        AnsiConsole.MarkupLine($"[green]✓[/] Model downloaded: [cyan]{downloadedSizeMB:F1} MB[/]");
-        AnsiConsole.WriteLine();
-
-        // Register with MaIN.NET
         await AIHub.Model().DownloadAsync(modelName);
+        AnsiConsole.WriteLine();
     }
 }
