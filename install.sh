@@ -1,35 +1,21 @@
 #!/bin/bash
 # Antty Installation Script for Linux/macOS
-# This script publishes the application and creates a symlink in /usr/local/bin
+# This script publishes the application and creates a launcher in /usr/local/bin
 
 echo "🚀 Installing Antty..."
 echo ""
 
-# Detect OS and architecture
-OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-ARCH=$(uname -m)
+# Get the project root directory
+PROJECT_ROOT="$(pwd)"
 
-# Map architecture names
-if [ "$ARCH" = "x86_64" ]; then
-    ARCH="x64"
-elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
-    ARCH="arm64"
-fi
+echo "📦 Publishing application..."
 
-# Determine runtime identifier
-if [ "$OS" = "linux" ]; then
-    RID="linux-$ARCH"
-elif [ "$OS" = "darwin" ]; then
-    RID="osx-$ARCH"
-else
-    echo "❌ Unsupported operating system: $OS"
-    exit 1
-fi
-
-echo "📦 Publishing application for $RID..."
-
-# Build and publish the application
-dotnet publish src/Antty.csproj -c Release -r $RID --self-contained false -o publish/$RID
+# Build and publish the application (framework-dependent to avoid LlamaSharp conflicts)
+# Using framework-dependent deployment - no runtime identifier to avoid native lib conflicts
+dotnet publish src/Antty.csproj \
+    --configuration Release \
+    --output publish \
+    --framework net10.0
 
 if [ $? -ne 0 ]; then
     echo "❌ Build failed!"
@@ -40,7 +26,7 @@ echo "✓ Build successful!"
 echo ""
 
 # Get the published executable path
-PUBLISH_PATH="$(pwd)/publish/$RID"
+PUBLISH_PATH="$PROJECT_ROOT/publish"
 EXE_PATH="$PUBLISH_PATH/Antty"
 
 if [ ! -f "$EXE_PATH" ]; then
@@ -55,10 +41,11 @@ chmod +x "$EXE_PATH"
 echo "🔧 Creating launcher script..."
 LAUNCHER_PATH="/usr/local/bin/antty"
 
-# Create wrapper script that runs from publish directory
+# Create wrapper script that preserves user's working directory
+# Set DYLD_LIBRARY_PATH so native libraries are found
 WRAPPER_SCRIPT="#!/bin/bash
-# Antty launcher - runs from publish directory to find native libraries
-cd \"$PUBLISH_PATH\"
+# Antty launcher - sets library path for native libraries while preserving working directory
+export DYLD_LIBRARY_PATH=\"$PUBLISH_PATH:\$DYLD_LIBRARY_PATH\"
 exec \"$EXE_PATH\" \"\$@\"
 "
 

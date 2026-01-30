@@ -87,7 +87,7 @@ public class LocalEmbeddingProvider : IEmbeddingProvider
             var deviceCount = NativeApi.llama_max_devices();
             if (deviceCount > 0)
             {
-                AnsiConsole.MarkupLine("[green]✓[/] CUDA detected - GPU acceleration enabled");
+                AnsiConsole.MarkupLine("[green]✓[/] GPU acceleration enabled");
                 return 999; // Offload all layers to GPU
             }
         }
@@ -96,7 +96,7 @@ public class LocalEmbeddingProvider : IEmbeddingProvider
             // CUDA not available, silently fall back to CPU
         }
 
-        AnsiConsole.MarkupLine("[yellow]⚠[/] No CUDA detected - using CPU");
+        AnsiConsole.MarkupLine("[yellow]⚠[/] No GPU detected - using CPU");
         return 0; // CPU-only
     }
 

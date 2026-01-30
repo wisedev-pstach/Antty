@@ -12,14 +12,17 @@ class Program
         // Enable UTF-8 encoding for emoji support
         Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-        // Configure LLamaSharp native library path
-        var appDir = AppContext.BaseDirectory;
-        var libPath = Path.Combine(appDir, "libllama.dylib");
-        if (File.Exists(libPath))
-        {
-            LLama.Native.NativeLibraryConfig.LLama.WithLibrary(libPath);
-        }
-        
+        // Initialize MaIN.NET framework for console apps
+        // TEMPORARILY DISABLED TO DEBUG
+        // var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        // services.AddMaIN(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        // var serviceProvider = services.BuildServiceProvider();
+        // serviceProvider.UseMaIN();
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        services.AddMaIN(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        var serviceProvider = services.BuildServiceProvider();
+        serviceProvider.UseMaIN();
+
         AIHub.Extensions.DisableLLamaLogs();
 
         // Display fancy header
@@ -81,7 +84,7 @@ class Program
             : new Antty.Embedding.OpenAIEmbeddingProvider(config.ApiKey);
 
         AnsiConsole.WriteLine();
-        
+
         // 2. Choose AI Model (for DocumentAssistant)
         AnsiConsole.Write(new Rule("[bold cyan]🤖 AI MODEL CONFIGURATION[/]").RuleStyle("cyan"));
         AnsiConsole.WriteLine();
@@ -128,7 +131,7 @@ class Program
         {
             // OpenAI embeddings → only show OpenAI AI model
             useLocalAI = false;
-            
+
             // Ensure API key is set
             if (string.IsNullOrWhiteSpace(config.ApiKey))
             {
@@ -584,7 +587,7 @@ class Program
         };
 
         var (fileName, url) = modelInfo;
-        
+
         var modelsDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Antty",
@@ -602,7 +605,7 @@ class Program
             var fileSizeMB = new FileInfo(modelPath).Length / (1024.0 * 1024.0);
             AnsiConsole.MarkupLine($"[green]✓[/] Using cached {fileName} ([cyan]{fileSizeMB:F1} MB[/])");
             AnsiConsole.WriteLine();
-            
+
             // Still need to register with MaIN.NET
             await AIHub.Model().DownloadAsync(modelName);
             return;
