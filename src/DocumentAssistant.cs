@@ -45,15 +45,14 @@ public class DocumentAssistant
     {
         _searchEngine = searchEngine;
         _documents = documents;
-        _conversationHistory.Clear(); // Clear conversation history for new session
+        _conversationHistory.Clear(); 
         AIHub.Extensions.DisableNotificationsLogs();
-		
+
         if (useLocalAI)
         {
-            // Local AI with BackendType.Self
             _assistantAgent = await AIHub.Agent()
                 .WithModel(localModelName)
-                .WithBackend(BackendType.Self)
+                .WithBackend(BackendType.Ollama)  
                 .WithKnowledge(KnowledgeBuilder.Instance.DisablePersistence())
                 .WithInitialPrompt(GetSystemPrompt())
                 .WithId("AnttyDocAssistant")
@@ -256,7 +255,7 @@ public class DocumentAssistant
         // Format results as simple text to avoid serialization issues
         var resultLines = new List<string>();
         resultLines.Add($"Found {topResults.Count} relevant passage(s):\n");
-        
+
         for (int i = 0; i < topResults.Count; i++)
         {
             var result = topResults[i];
@@ -266,7 +265,7 @@ public class DocumentAssistant
         }
 
         AnsiConsole.MarkupLine($"[dim]✓ Found {topResults.Count} result(s)[/]");
-        
+
         return new
         {
             result = string.Join("\n", resultLines)

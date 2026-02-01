@@ -114,18 +114,46 @@ class Program
                 _ => "gemma3:4b"
             };
 
-            // Initialize MaIN.NET and download model
-            var modelsDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "Antty",
-                "models"
-            );
-            MaINBootstrapper.Initialize(configureSettings: (settings) =>
-            {
-                settings.ModelsPath = modelsDir;
-            });
+            // Ensure Ollama is installed and running
+            AnsiConsole.WriteLine();
+            AnsiConsole.Write(new Rule("[bold cyan]🦙 OLLAMA SETUP[/]").RuleStyle("cyan"));
+            AnsiConsole.WriteLine();
 
-            await DownloadLocalModelAsync(localModelName);
+            if (!await OllamaManager.EnsureOllamaReadyAsync())
+            {
+                AnsiConsole.MarkupLine("[red]Cannot proceed without Ollama. Please install it and try again.[/]");
+                return;
+            }
+
+            AnsiConsole.WriteLine();
+
+            // Check if model is already installed
+            if (!await OllamaManager.IsModelInstalledAsync(localModelName))
+            {
+                AnsiConsole.MarkupLine($"[yellow]Model {localModelName} not found locally[/]");
+
+                var shouldDownload = AnsiConsole.Confirm(
+                    $"[cyan]Would you like to download {localModelName}?[/]",
+                    true);
+
+                if (shouldDownload)
+                {
+                    if (!await OllamaManager.PullModelAsync(localModelName))
+                    {
+                        AnsiConsole.MarkupLine("[red]✗[/] Failed to download model");
+                        return;
+                    }
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("[yellow]Cannot proceed without a model[/]");
+                    return;
+                }
+            }
+            else
+            {
+                AnsiConsole.MarkupLine($"[green]✓[/] Model {localModelName} is ready");
+            }
         }
         else
         {
