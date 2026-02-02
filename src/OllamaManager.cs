@@ -13,12 +13,20 @@ public static class OllamaManager
     private const string OllamaHealthUrl = "http://localhost:11434/api/version";
     private const int OllamaDefaultPort = 11434;
     private static Process? _ollamaProcess;
+    private static string? _ollamaExecutablePath; // Store the actual path to ollama.exe
 
     /// <summary>
-    /// Check if Ollama is installed on the system
+    /// Get the Ollama executable path (checks PATH and default locations)
     /// </summary>
-    public static bool IsOllamaInstalled()
+    private static string GetOllamaExecutablePath()
     {
+        // Return cached path if we already found it
+        if (!string.IsNullOrEmpty(_ollamaExecutablePath) && File.Exists(_ollamaExecutablePath))
+        {
+            return _ollamaExecutablePath;
+        }
+
+        // Try to use 'ollama' from PATH first
         try
         {
             var startInfo = new ProcessStartInfo
@@ -32,15 +40,75 @@ public static class OllamaManager
             };
 
             using var process = Process.Start(startInfo);
-            if (process == null) return false;
+            if (process != null)
+            {
+                process.WaitForExit(5000);
+                if (process.ExitCode == 0)
+                {
+                    _ollamaExecutablePath = "ollama"; // Available in PATH
+                    return "ollama";
+                }
+            }
+        }
+        catch { }
 
-            process.WaitForExit(5000);
-            return process.ExitCode == 0;
-        }
-        catch
+        // PATH doesn't work, check default installation locations
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            return false;
+            var possiblePaths = new[]
+            {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Ollama", "ollama.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Ollama", "ollama.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData", "Local", "Programs", "Ollama", "ollama.exe")
+            };
+
+            foreach (var path in possiblePaths)
+            {
+                if (File.Exists(path))
+                {
+                    _ollamaExecutablePath = path;
+                    return path;
+                }
+            }
         }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            if (File.Exists("/usr/local/bin/ollama"))
+            {
+                _ollamaExecutablePath = "/usr/local/bin/ollama";
+                return "/usr/local/bin/ollama";
+            }
+            if (File.Exists("/opt/homebrew/bin/ollama"))
+            {
+                _ollamaExecutablePath = "/opt/homebrew/bin/ollama";
+                return "/opt/homebrew/bin/ollama";
+            }
+        }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            if (File.Exists("/usr/local/bin/ollama"))
+            {
+                _ollamaExecutablePath = "/usr/local/bin/ollama";
+                return "/usr/local/bin/ollama";
+            }
+            if (File.Exists("/usr/bin/ollama"))
+            {
+                _ollamaExecutablePath = "/usr/bin/ollama";
+                return "/usr/bin/ollama";
+            }
+        }
+
+        // Default fallback
+        return "ollama";
+    }
+
+    /// <summary>
+    /// Check if Ollama is installed on the system
+    /// </summary>
+    public static bool IsOllamaInstalled()
+    {
+        var exePath = GetOllamaExecutablePath();
+        return !string.IsNullOrEmpty(exePath) && (exePath == "ollama" || File.Exists(exePath));
     }
 
     /// <summary>
@@ -67,11 +135,20 @@ public static class OllamaManager
     {
         try
         {
+            // Check if Ollama is already running (e.g., GUI auto-started)
+            if (await IsOllamaRunningAsync())
+            {
+                AnsiConsole.MarkupLine("[green]✓[/] Ollama service is already running");
+                return true;
+            }
+
             // If already running, don't start again
             if (_ollamaProcess != null && !_ollamaProcess.HasExited)
             {
                 return true;
             }
+
+            var ollamaPath = GetOllamaExecutablePath();
 
             AnsiConsole.Status()
                 .Spinner(Spinner.Known.Dots)
@@ -80,7 +157,7 @@ public static class OllamaManager
                 {
                     var startInfo = new ProcessStartInfo
                     {
-                        FileName = "ollama",
+                        FileName = ollamaPath, // Use the resolved path
                         Arguments = "serve",
                         UseShellExecute = false,
                         CreateNoWindow = true,
@@ -118,9 +195,11 @@ public static class OllamaManager
     {
         try
         {
+            var ollamaPath = GetOllamaExecutablePath();
+            
             var startInfo = new ProcessStartInfo
             {
-                FileName = "ollama",
+                FileName = ollamaPath,
                 Arguments = "list",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -174,9 +253,11 @@ public static class OllamaManager
             AnsiConsole.MarkupLine($"[cyan]Downloading model[/] [yellow]{modelName}[/]");
             AnsiConsole.WriteLine();
 
+            var ollamaPath = GetOllamaExecutablePath();
+
             var startInfo = new ProcessStartInfo
             {
-                FileName = "ollama",
+                FileName = ollamaPath,
                 Arguments = $"pull {modelName}",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -271,9 +352,11 @@ public static class OllamaManager
     {
         try
         {
+            var ollamaPath = GetOllamaExecutablePath();
+            
             var startInfo = new ProcessStartInfo
             {
-                FileName = "ollama",
+                FileName = ollamaPath,
                 Arguments = "list",
                 RedirectStandardOutput = true,
                 UseShellExecute = false,
@@ -455,42 +538,98 @@ public static class OllamaManager
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 // Try winget on Windows
-                return await AnsiConsole.Status()
-                    .Spinner(Spinner.Known.Dots)
-                    .SpinnerStyle(Style.Parse("cyan bold"))
-                    .StartAsync("[cyan]Installing Ollama via winget...[/]", async ctx =>
+                AnsiConsole.MarkupLine("[cyan]Installing Ollama via winget...[/]");
+                AnsiConsole. MarkupLine("[dim]This may take a few minutes and might require admin privileges[/]");
+                AnsiConsole.WriteLine();
+
+                try
+                {
+                    var startInfo = new ProcessStartInfo
                     {
-                        var startInfo = new ProcessStartInfo
-                        {
-                            FileName = "winget",
-                            Arguments = "install Ollama.Ollama -e --silent",
-                            RedirectStandardOutput = true,
-                            RedirectStandardError = true,
-                            UseShellExecute = false,
-                            CreateNoWindow = true
-                        };
+                        FileName = "winget",
+                        Arguments = "install Ollama.Ollama -e --silent --accept-source-agreements --accept-package-agreements",
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
 
-                        using var process = Process.Start(startInfo);
-                        if (process == null)
-                        {
-                            AnsiConsole.MarkupLine("[red]✗[/] Failed to start installation");
-                            return false;
-                        }
+                    using var process = Process.Start(startInfo);
+                    if (process == null)
+                    {
+                        AnsiConsole.MarkupLine("[red]✗[/] Failed to start winget");
+                        return false;
+                    }
 
-                        await process.WaitForExitAsync();
+                    // Track installation phases
+                    bool foundPackage = false;
+                    bool downloading = false;
+                    bool installing = false;
 
-                        if (process.ExitCode == 0)
+                    // Monitor output for key events
+                    var outputTask = Task.Run(async () =>
+                    {
+                        try
                         {
-                            ctx.Status("[green]✓ Ollama installed successfully[/]");
-                            await Task.Delay(500);
-                            return true;
+                            while (!process.HasExited)
+                            {
+                                var line = await process.StandardOutput.ReadLineAsync();
+                                if (!string.IsNullOrWhiteSpace(line))
+                                {
+                                    if (line.Contains("Found") && !foundPackage)
+                                    {
+                                        foundPackage = true;
+                                        AnsiConsole.MarkupLine("  [cyan]→[/] Found Ollama package");
+                                    }
+                                    else if (line.Contains("Downloading") && !downloading)
+                                    {
+                                        downloading = true;
+                                        AnsiConsole.MarkupLine("  [cyan]→[/] Downloading Ollama (1.17 GB)...");
+                                    }
+                                    else if (line.Contains("Installing") && !installing)
+                                    {
+                                        installing = true;
+                                        AnsiConsole.MarkupLine("  [cyan]→[/] Installing...");
+                                    }
+                                }
+                            }
                         }
-                        else
-                        {
-                            AnsiConsole.MarkupLine($"[red]✗[/] Installation failed");
-                            return false;
-                        }
+                        catch { }
                     });
+
+                    // Wait with timeout (20 minutes for slow connections)
+                    var timeoutTask = Task.Delay(TimeSpan.FromMinutes(20));
+                    var completedTask = await Task.WhenAny(process.WaitForExitAsync(), timeoutTask);
+
+                    if (completedTask == timeoutTask)
+                    {
+                        // Timeout occurred
+                        try { process.Kill(); } catch { }
+                        AnsiConsole.WriteLine();
+                        AnsiConsole.MarkupLine("[yellow]⚠[/] Installation timed out after 20 minutes");
+                        return false;
+                    }
+
+                    try { await outputTask; } catch { }
+
+                    AnsiConsole.WriteLine();
+
+                    if (process.ExitCode == 0)
+                    {
+                        AnsiConsole.MarkupLine("[green]✓[/] Ollama installed successfully");
+                        return true;
+                    }
+                    else
+                    {
+                        AnsiConsole.MarkupLine($"[red]✗[/] Installation failed (exit code: {process.ExitCode})");
+                        return false;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AnsiConsole.MarkupLine($"[red]✗[/] Installation error: {ex.Message}");
+                    return false;
+                }
             }
         }
         catch (Exception ex)
