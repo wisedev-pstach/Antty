@@ -95,24 +95,63 @@ class Program
         if (useLocalProvider)
         {
             // Local embeddings → only show local AI models
+            // Build model choices including saved custom models
+            var modelChoices = new List<string>
+            {
+                "💻 Phi4-Mini (3.8B params, best for tools)",
+                "💻 Llama3.1-8b (8B params, balanced)",
+                "💻 Qwen3-14b (14B params, most capable)"
+            };
+
+            // Add previously used custom models
+            foreach (var customModel in config.CustomOllamaModels.Distinct())
+            {
+                modelChoices.Add($"📦 {customModel} (custom)");
+            }
+
+            // Add "Enter custom model" option
+            modelChoices.Add("⌨️  Enter custom model name...");
+
             var modelChoice = AnsiConsole.Prompt(
                 new SelectionPrompt<string>()
                     .Title("[cyan]Choose local AI model for document assistant:[/]")
-                    .PageSize(10)
-                    .AddChoices(new[] {
-                        "💻 Gemma3-4b (4B params, fastest)",
-                        "💻 Llama3.1-8b (8B params, balanced)",
-                        "💻 Qwen3-14b (14B params, most capable)"
-                    }));
+                    .PageSize(15)
+                    .AddChoices(modelChoices));
 
             useLocalAI = true;
-            localModelName = modelChoice switch
+
+            if (modelChoice.Contains("Enter custom"))
             {
-                var s when s.Contains("Gemma3-4b") => "gemma3:4b",
-                var s when s.Contains("Llama3.1-8b") => "llama3.1:8b",
-                var s when s.Contains("Qwen3-14b") => "qwen3:14b",
-                _ => "gemma3:4b"
-            };
+                // User wants to enter a custom model
+                localModelName = AnsiConsole.Prompt(
+                    new TextPrompt<string>("[cyan]Enter Ollama model name (e.g., mistral, llama2):[/]")
+                        .PromptStyle("yellow")
+                        .ValidationErrorMessage("[red]Model name cannot be empty[/]")
+                        .Validate(name => !string.IsNullOrWhiteSpace(name)));
+
+                // Save to custom models list
+                if (!config.CustomOllamaModels.Contains(localModelName))
+                {
+                    config.CustomOllamaModels.Add(localModelName);
+                    config.Save();
+                }
+            }
+            else if (modelChoice.Contains("(custom)"))
+            {
+                // Extract custom model name
+                localModelName = modelChoice.Replace("📦 ", "").Replace(" (custom)", "").Trim();
+            }
+            else
+            {
+                // Standard model selection
+                localModelName = modelChoice switch
+                {
+                    var s when s.Contains("Phi4-Mini") => "phi4-mini",
+                    var s when s.Contains("Llama3.1-8b") => "llama3.1:8b",
+                    var s when s.Contains("Qwen3-14b") => "qwen3:14b",
+                    _ => "phi4-mini"
+                };
+            }
 
             // Ensure Ollama is installed and running
             AnsiConsole.WriteLine();

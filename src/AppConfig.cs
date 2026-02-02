@@ -11,6 +11,9 @@ public class AppConfig
     public string EmbeddingProvider { get; set; } = "openai"; // "openai" or "local"
     public string LocalModelPath { get; set; } = "";
 
+    // Ollama model configuration
+    public List<string> CustomOllamaModels { get; set; } = new();
+
     private static readonly string ConfigPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Antty",

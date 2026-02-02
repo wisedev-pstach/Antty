@@ -73,29 +73,55 @@ public static class OllamaManager
                 return true;
             }
 
-            AnsiConsole.Status()
-                .Spinner(Spinner.Known.Dots)
-                .SpinnerStyle(Style.Parse("cyan bold"))
-                .Start("[cyan]Starting Ollama service...[/]", ctx =>
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "ollama",
+                Arguments = "serve",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+
+            // Start the process and keep reference
+            _ollamaProcess = Process.Start(startInfo);
+
+            if (_ollamaProcess == null)
+            {
+                AnsiConsole.MarkupLine("[red]✗[/] Failed to start Ollama process");
+                return false;
+            }
+
+            // Monitor output in background
+            _ = Task.Run(async () =>
+            {
+                try
                 {
-                    var startInfo = new ProcessStartInfo
+                    while (!_ollamaProcess.HasExited)
                     {
-                        FileName = "ollama",
-                        Arguments = "serve",
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true
-                    };
+                        var line = await _ollamaProcess.StandardError.ReadLineAsync();
+                        if (line != null && line.Contains("error", StringComparison.OrdinalIgnoreCase))
+                        {
+                            AnsiConsole.MarkupLine($"[red]Ollama error:[/] [dim]{line.EscapeMarkup()}[/]");
+                        }
+                    }
+                }
+                catch { }
+            });
 
-                    // Keep reference to prevent garbage collection
-                    _ollamaProcess = Process.Start(startInfo);
-                });
+            AnsiConsole.MarkupLine("[cyan]⏳[/] Starting Ollama service...");
 
-            // Wait for service to be ready
+            // Wait for service to be ready with progress
             for (int i = 0; i < 10; i++)
             {
                 await Task.Delay(1000);
+
+                if (_ollamaProcess.HasExited)
+                {
+                    AnsiConsole.MarkupLine($"[red]✗[/] Ollama process exited with code {_ollamaProcess.ExitCode}");
+                    return false;
+                }
+
                 if (await IsOllamaRunningAsync())
                 {
                     AnsiConsole.MarkupLine("[green]✓[/] Ollama service started");
@@ -103,10 +129,12 @@ public static class OllamaManager
                 }
             }
 
+            AnsiConsole.MarkupLine("[red]✗[/] Ollama service did not start in time");
             return false;
         }
-        catch
+        catch (Exception ex)
         {
+            AnsiConsole.MarkupLine($"[red]✗[/] Error starting Ollama: {ex.Message.EscapeMarkup()}");
             return false;
         }
     }
