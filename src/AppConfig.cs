@@ -42,7 +42,7 @@ public class AppConfig
         File.WriteAllText(ConfigPath, json);
     }
 
-    public static string GetKnowledgeBasePath(string documentPath)
+    public static string GetKnowledgeBasePath(string documentPath, string provider)
     {
         // Create a centralized cache directory for knowledge bases
         var cacheDir = Path.Combine(
@@ -58,9 +58,10 @@ public class AppConfig
 
         // Create a unique filename based on the document's full path
         // This ensures different files with the same name don't collide
+        // Include provider suffix to separate local vs cloud embeddings
         var documentHash = GetStableHash(documentPath);
         var documentName = Path.GetFileNameWithoutExtension(documentPath);
-        var safeFileName = $"{documentName}_{documentHash}_knowledge.json";
+        var safeFileName = $"{documentName}_{documentHash}_{provider}_knowledge.json";
 
         return Path.Combine(cacheDir, safeFileName);
     }

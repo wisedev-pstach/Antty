@@ -5,7 +5,7 @@ using Microsoft.Extensions.Configuration;
 using MaIN.Core;
 using MaIN.Core.Hub;
 
-class Program
+partial class Program
 {
     static async Task Main(string[] args)
     {
@@ -37,176 +37,13 @@ class Program
         // Load configuration
         var config = AppConfig.Load();
 
-        // 1. Choose Embedding Provider
-        AnsiConsole.Write(new Rule("[bold cyan]🔧 EMBEDDING CONFIGURATION[/]").RuleStyle("cyan"));
-        AnsiConsole.WriteLine();
-
-        var providerChoice = AnsiConsole.Prompt(
-            new SelectionPrompt<string>()
-                .Title("[cyan]Choose embedding provider:[/]")
-                .PageSize(10)
-                .AddChoices(new[] {
-                    "🌐 OpenAI (Cloud, requires API key)",
-                    "💻 Local (Offline, uses GGUF models)"
-                }));
-
-        bool useLocalProvider = providerChoice.StartsWith("💻");
-
-        if (useLocalProvider)
+        // Configure providers and models (can be called again when switching)
+        var (embeddingProvider, useLocalAI, localModelName) = await ConfigureProvidersAsync(config);
+        
+        if (embeddingProvider == null)
         {
-            config.EmbeddingProvider = "local";
-            config.LocalModelPath = await DownloadNomicModelAsync();
-        }
-        else
-        {
-            config.EmbeddingProvider = "openai";
-
-            // Check if API key is configured
-            if (config.ApiKey == "sk-YOUR-OPENAI-KEY-HERE")
-            {
-                AnsiConsole.MarkupLine("[yellow]⚠ API Key not configured![/]");
-                config.ApiKey = AnsiConsole.Prompt(
-                    new TextPrompt<string>("[cyan]Enter your OpenAI API Key:[/]")
-                        .PromptStyle("green")
-                        .Secret());
-                config.Save();
-                AnsiConsole.MarkupLine("[green]✓[/] API Key saved!");
-                AnsiConsole.WriteLine();
-            }
-        }
-
-        config.Save();
-        AnsiConsole.WriteLine();
-
-        // 2. Create embedding provider based on user choice
-        using var embeddingProvider = useLocalProvider
-            ? (Antty.Embedding.IEmbeddingProvider)new Antty.Embedding.LocalEmbeddingProvider(config.LocalModelPath)
-            : new Antty.Embedding.OpenAIEmbeddingProvider(config.ApiKey);
-
-        AnsiConsole.WriteLine();
-
-        // 2. Choose AI Model (for DocumentAssistant)
-        AnsiConsole.Write(new Rule("[bold cyan]🤖 AI MODEL CONFIGURATION[/]").RuleStyle("cyan"));
-        AnsiConsole.WriteLine();
-
-        bool useLocalAI;
-        string localModelName = "";
-
-        if (useLocalProvider)
-        {
-            // Local embeddings → only show local AI models
-            // Build model choices including saved custom models
-            var modelChoices = new List<string>
-            {
-                "💻 Phi4-Mini (3.8B params, best for tools)",
-                "💻 Llama3.1-8b (8B params, balanced)",
-                "💻 Qwen3-14b (14B params, most capable)"
-            };
-
-            // Add previously used custom models
-            foreach (var customModel in config.CustomOllamaModels.Distinct())
-            {
-                modelChoices.Add($"📦 {customModel} (custom)");
-            }
-
-            // Add "Enter custom model" option
-            modelChoices.Add("⌨️  Enter custom model name...");
-
-            var modelChoice = AnsiConsole.Prompt(
-                new SelectionPrompt<string>()
-                    .Title("[cyan]Choose local AI model for document assistant:[/]")
-                    .PageSize(15)
-                    .AddChoices(modelChoices));
-
-            useLocalAI = true;
-
-            if (modelChoice.Contains("Enter custom"))
-            {
-                // User wants to enter a custom model
-                localModelName = AnsiConsole.Prompt(
-                    new TextPrompt<string>("[cyan]Enter Ollama model name (e.g., mistral, llama2):[/]")
-                        .PromptStyle("yellow")
-                        .ValidationErrorMessage("[red]Model name cannot be empty[/]")
-                        .Validate(name => !string.IsNullOrWhiteSpace(name)));
-
-                // Save to custom models list
-                if (!config.CustomOllamaModels.Contains(localModelName))
-                {
-                    config.CustomOllamaModels.Add(localModelName);
-                    config.Save();
-                }
-            }
-            else if (modelChoice.Contains("(custom)"))
-            {
-                // Extract custom model name
-                localModelName = modelChoice.Replace("📦 ", "").Replace(" (custom)", "").Trim();
-            }
-            else
-            {
-                // Standard model selection
-                localModelName = modelChoice switch
-                {
-                    var s when s.Contains("Phi4-Mini") => "phi4-mini",
-                    var s when s.Contains("Llama3.1-8b") => "llama3.1:8b",
-                    var s when s.Contains("Qwen3-14b") => "qwen3:14b",
-                    _ => "phi4-mini"
-                };
-            }
-
-            // Ensure Ollama is installed and running
-            AnsiConsole.WriteLine();
-            AnsiConsole.Write(new Rule("[bold cyan]🦙 OLLAMA SETUP[/]").RuleStyle("cyan"));
-            AnsiConsole.WriteLine();
-
-            if (!await OllamaManager.EnsureOllamaReadyAsync())
-            {
-                AnsiConsole.MarkupLine("[red]Cannot proceed without Ollama. Please install it and try again.[/]");
-                return;
-            }
-
-            AnsiConsole.WriteLine();
-
-            // Check if model is already installed
-            if (!await OllamaManager.IsModelInstalledAsync(localModelName))
-            {
-                AnsiConsole.MarkupLine($"[yellow]Model {localModelName} not found locally[/]");
-
-                var shouldDownload = AnsiConsole.Confirm(
-                    $"[cyan]Would you like to download {localModelName}?[/]",
-                    true);
-
-                if (shouldDownload)
-                {
-                    if (!await OllamaManager.PullModelAsync(localModelName))
-                    {
-                        AnsiConsole.MarkupLine("[red]✗[/] Failed to download model");
-                        return;
-                    }
-                }
-                else
-                {
-                    AnsiConsole.MarkupLine("[yellow]Cannot proceed without a model[/]");
-                    return;
-                }
-            }
-            else
-            {
-                AnsiConsole.MarkupLine($"[green]✓[/] Model {localModelName} is ready");
-            }
-        }
-        else
-        {
-            // OpenAI embeddings → only show OpenAI AI model
-            useLocalAI = false;
-
-            // Ensure API key is set
-            if (string.IsNullOrWhiteSpace(config.ApiKey))
-            {
-                AnsiConsole.MarkupLine("[red]API key required for OpenAI![/]");
-                return;
-            }
-
-            AnsiConsole.MarkupLine("[cyan]Using OpenAI GPT-5-nano for document assistant[/]");
+            AnsiConsole.MarkupLine("[red]Configuration failed. Exiting.[/]");
+            return;
         }
 
         AnsiConsole.WriteLine();
@@ -235,7 +72,7 @@ class Program
         var fileChoices = availableFiles.Select(filePath =>
         {
             var fileName = Path.GetFileName(filePath);
-            var kbPath = AppConfig.GetKnowledgeBasePath(filePath);
+            var kbPath = AppConfig.GetKnowledgeBasePath(filePath, config.EmbeddingProvider);
             var hasKB = File.Exists(kbPath);
             return new
             {
@@ -280,7 +117,7 @@ class Program
 
         foreach (var filePath in selectedPaths)
         {
-            var kbPath = AppConfig.GetKnowledgeBasePath(filePath);
+            var kbPath = AppConfig.GetKnowledgeBasePath(filePath, config.EmbeddingProvider);
             documentsToProcess.Add((filePath, kbPath));
 
             if (!File.Exists(kbPath))
@@ -323,6 +160,17 @@ class Program
 
         // 6. Main menu loop
         bool running = true;
+
+        // Prompt to start assistant immediately after loading
+        if (multiEngine.LoadedDocumentCount > 0)
+        {
+            AnsiConsole.WriteLine();
+            if (AnsiConsole.Confirm("[cyan]Start chatting with the assistant?[/]", true))
+            {
+                await TalkToAssistantAsync(config.ApiKey, multiEngine, documentsToProcess, useLocalAI, localModelName);
+            }
+        }
+
         while (running)
         {
             AnsiConsole.WriteLine();
@@ -334,11 +182,12 @@ class Program
 
             var choice = AnsiConsole.Prompt(
                 new SelectionPrompt<string>()
-                    .Title("[cyan]What would you like to do?[/]")
+                    .Title($"[cyan]What would you like to do?[/] [dim](Embeddings: {config.EmbeddingProvider})[/]")
                     .PageSize(10)
                     .AddChoices(new[] {
                         "💬 Talk to Assistant",
                         "🔍 Search Documents",
+                        "🔧 Switch Local/Cloud",
                         "📚 Reload/Change Documents",
                         "⚙️  Settings",
                         "❌ Exit"
@@ -353,6 +202,109 @@ class Program
             else if (choice.StartsWith("🔍"))
             {
                 await SearchDocumentsAsync(multiEngine);
+            }
+            else if (choice.StartsWith("🔧"))
+            {
+                // Switch embedding provider - full reconfiguration
+                AnsiConsole.WriteLine();
+                AnsiConsole.MarkupLine("[dim]Switching will reconfigure both embedding provider and AI model...[/]");
+                
+                var shouldSwitch = AnsiConsole.Confirm("[cyan]Continue?[/]", true);
+                if (!shouldSwitch)
+                {
+                    continue;
+                }
+
+                // Remember old provider to check if embeddings changed
+                var oldEmbeddingProvider = config.EmbeddingProvider;
+
+                // Dispose old embedding provider
+                embeddingProvider?.Dispose();
+                
+                // Run full configuration again
+                var (newEmbeddingProvider, newUseLocalAI, newLocalModelName) = await ConfigureProvidersAsync(config);
+                
+                if (newEmbeddingProvider == null)
+                {
+                    AnsiConsole.MarkupLine("[red]Configuration failed. Keeping previous settings.[/]");
+                    continue;
+                }
+
+                // Update configuration
+                embeddingProvider = newEmbeddingProvider;
+                useLocalAI = newUseLocalAI;
+                localModelName = newLocalModelName;
+
+                AnsiConsole.WriteLine();
+                AnsiConsole.MarkupLine("[green]✓[/] Provider switched successfully!");
+                AnsiConsole.WriteLine();
+                
+                // Check if embedding provider actually changed (local <-> openai)
+                bool embeddingProviderChanged = oldEmbeddingProvider != config.EmbeddingProvider;
+
+                if (embeddingProviderChanged)
+                {
+                    // Embedding provider changed - need to re-index
+                    AnsiConsole.MarkupLine("[yellow]⚠[/] Embedding provider changed. Documents need to be re-indexed.");
+                    var shouldReload = AnsiConsole.Confirm("[cyan]Re-index documents now?[/]", true);
+                    
+                    if (shouldReload)
+                    {
+                        AnsiConsole.WriteLine();
+                        AnsiConsole.Write(new Rule("[dim]Rebuilding Knowledge Bases[/]").RuleStyle("dim"));
+                        AnsiConsole.WriteLine();
+
+                        // Rebuild knowledge bases with new provider
+                        var newDocumentsToProcess = new List<(string filePath, string kbPath)>();
+                        int rebuilt = 0;
+
+                        foreach (var filePath in config.SelectedDocuments)
+                        {
+                            var kbPath = AppConfig.GetKnowledgeBasePath(filePath, config.EmbeddingProvider);
+                            newDocumentsToProcess.Add((filePath, kbPath));
+
+                            // Always rebuild when switching embedding providers
+                            AnsiConsole.MarkupLine($"[yellow]⚙ Re-indexing:[/] [cyan]{Path.GetFileName(filePath)}[/]");
+                            await IngestionBuilder.BuildDatabaseAsync(filePath, embeddingProvider, kbPath);
+                            rebuilt++;
+                        }
+
+                        AnsiConsole.WriteLine();
+                        AnsiConsole.MarkupLine($"[green]✓[/] Re-indexed {rebuilt} document(s) with {config.EmbeddingProvider} embeddings");
+                        AnsiConsole.WriteLine();
+
+                        // Reload multiEngine with new KBs
+                        AnsiConsole.Write(new Rule("[dim]Reloading Documents[/]").RuleStyle("dim"));
+                        AnsiConsole.WriteLine();
+
+                        multiEngine.LoadDocuments(embeddingProvider, newDocumentsToProcess);
+                        documentsToProcess = newDocumentsToProcess;
+
+                        AnsiConsole.MarkupLine($"[green]✓[/] Loaded {multiEngine.LoadedDocumentCount} document(s)");
+                    }
+                }
+                else
+                {
+                    // Only AI model changed - no need to re-index
+                    AnsiConsole.MarkupLine("[dim]AI model changed, but embeddings are the same. No re-indexing needed.[/]");
+                    
+                    // However, we still need to reload multiEngine with the new embedding provider instance
+                    // (we disposed the old one and created a new one)
+                    AnsiConsole.WriteLine();
+                    AnsiConsole.MarkupLine("[dim]Reloading documents with new provider instance...[/]");
+                    multiEngine.LoadDocuments(embeddingProvider, documentsToProcess);
+                    AnsiConsole.MarkupLine($"[green]✓[/] Loaded {multiEngine.LoadedDocumentCount} document(s)");
+                }
+
+                // Prompt to start assistant after switching
+                if (multiEngine.LoadedDocumentCount > 0)
+                {
+                    AnsiConsole.WriteLine();
+                    if (AnsiConsole.Confirm("[cyan]Start chatting with the assistant?[/]", true))
+                    {
+                        await TalkToAssistantAsync(config.ApiKey, multiEngine, documentsToProcess, useLocalAI, localModelName);
+                    }
+                }
             }
             else if (choice.StartsWith("📚"))
             {
@@ -685,5 +637,177 @@ class Program
 
         await AIHub.Model().DownloadAsync(modelName);
         AnsiConsole.WriteLine();
+    }
+
+    /// <summary>
+    /// Configure embedding provider and AI model (reusable for initial setup and mid-session switching)
+    /// </summary>
+    /// <returns>Tuple of (embeddingProvider, useLocalAI, localModelName)</returns>
+    static async Task<(Antty.Embedding.IEmbeddingProvider?, bool, string)> ConfigureProvidersAsync(AppConfig config)
+    {
+        // 1. Choose Embedding Provider
+        AnsiConsole.Write(new Rule("[bold cyan]🔧 EMBEDDING CONFIGURATION[/]").RuleStyle("cyan"));
+        AnsiConsole.WriteLine();
+
+        var providerChoice = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("[cyan]Choose embedding provider:[/]")
+                .PageSize(10)
+                .AddChoices(new[] {
+                    "🌐 OpenAI (Cloud, requires API key)",
+                    "💻 Local (Offline, uses GGUF models)"
+                }));
+
+        bool useLocalProvider = providerChoice.StartsWith("💻");
+
+        if (useLocalProvider)
+        {
+            config.EmbeddingProvider = "local";
+            config.LocalModelPath = await DownloadNomicModelAsync();
+        }
+        else
+        {
+            config.EmbeddingProvider = "openai";
+
+            // Check if API key is configured
+            if (config.ApiKey == "sk-YOUR-OPENAI-KEY-HERE" || string.IsNullOrWhiteSpace(config.ApiKey))
+            {
+                AnsiConsole.MarkupLine("[yellow]⚠ API Key not configured![/]");
+                config.ApiKey = AnsiConsole.Prompt(
+                    new TextPrompt<string>("[cyan]Enter your OpenAI API Key:[/]")
+                        .PromptStyle("green")
+                        .Secret());
+                config.Save();
+                AnsiConsole.MarkupLine("[green]✓[/] API Key saved!");
+                AnsiConsole.WriteLine();
+            }
+        }
+
+        config.Save();
+        AnsiConsole.WriteLine();
+
+        // 2. Create embedding provider based on user choice
+        var embeddingProvider = useLocalProvider
+            ? (Antty.Embedding.IEmbeddingProvider)new Antty.Embedding.LocalEmbeddingProvider(config.LocalModelPath)
+            : new Antty.Embedding.OpenAIEmbeddingProvider(config.ApiKey);
+
+        AnsiConsole.WriteLine();
+
+        // 3. Choose AI Model (for DocumentAssistant)
+        AnsiConsole.Write(new Rule("[bold cyan]🤖 AI MODEL CONFIGURATION[/]").RuleStyle("cyan"));
+        AnsiConsole.WriteLine();
+
+        bool useLocalAI;
+        string localModelName = "";
+
+        if (useLocalProvider)
+        {
+            // Local embeddings → only show local AI models 
+            // Build model choices including saved custom models
+            var modelChoices = new List<string>
+            {
+                "💻 Granite4:3b (3B params, small, fast)",
+                "💻 Llama3.1:8b (8B params, balanced)",
+                "💻 Qwen3:14b (14B params, most capable)"
+            };
+
+            // Add previously used custom models
+            foreach (var customModel in config.CustomOllamaModels.Distinct())
+            {
+                modelChoices.Add($"📦 {customModel} (custom)");
+            }
+
+            // Add "Enter custom model" option
+            modelChoices.Add("⌨️  Enter custom model name...");
+
+            var modelChoice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[cyan]Choose local AI model for document assistant:[/]")
+                    .PageSize(15)
+                    .AddChoices(modelChoices));
+
+            useLocalAI = true;
+
+            if (modelChoice.Contains("Enter custom"))
+            {
+                // User wants to enter a custom model
+                localModelName = AnsiConsole.Prompt(
+                    new TextPrompt<string>("[cyan]Enter Ollama model name (e.g., mistral, llama2):[/]")
+                        .PromptStyle("yellow")
+                        .ValidationErrorMessage("[red]Model name cannot be empty[/]")
+                        .Validate(name => !string.IsNullOrWhiteSpace(name)));
+
+                // Save to custom models list
+                if (!config.CustomOllamaModels.Contains(localModelName))
+                {
+                    config.CustomOllamaModels.Add(localModelName);
+                    config.Save();
+                }
+            }
+            else if (modelChoice.Contains("(custom)"))
+            {
+                // Extract custom model name
+                localModelName = modelChoice.Replace("📦 ", "").Replace(" (custom)", "").Trim();
+            }
+            else
+            {
+                // Standard model selection
+                localModelName = modelChoice switch
+                {
+                    var s when s.Contains("Granite4:3b") => "granite4:3b",
+                    var s when s.Contains("Llama3.1:8b") => "llama3.1:8b",
+                    var s when s.Contains("Qwen3:14b") => "qwen3:14b",
+                    _ => "granite4:3b"
+                };
+            }
+
+            // Ensure Ollama is installed and running
+            AnsiConsole.WriteLine();
+            AnsiConsole.Write(new Rule("[bold cyan]🦙 OLLAMA SETUP[/]").RuleStyle("cyan"));
+            AnsiConsole.WriteLine();
+
+            if (!await OllamaManager.EnsureOllamaReadyAsync())
+            {
+                AnsiConsole.MarkupLine("[red]Cannot proceed without Ollama. Please install it and try again.[/]");
+                return (null, false, "");
+            }
+
+            AnsiConsole.WriteLine();
+
+            // Check if model is already installed
+            if (!await OllamaManager.IsModelInstalledAsync(localModelName))
+            {
+                AnsiConsole.MarkupLine($"[yellow]Model {localModelName} not found locally[/]");
+
+                var shouldDownload = AnsiConsole.Confirm(
+                    $"[cyan]Would you like to download {localModelName}?[/]",
+                    true);
+
+                if (shouldDownload)
+                {
+                    if (!await OllamaManager.PullModelAsync(localModelName))
+                    {
+                        AnsiConsole.MarkupLine("[red]✗[/] Failed to download model");
+                        return (null, false, "");
+                    }
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("[yellow]Cannot proceed without a model[/]");
+                    return (null, false, "");
+                }
+            }
+            else
+            {
+                AnsiConsole.MarkupLine($"[green]✓[/] Model {localModelName} is ready");
+            }
+        }
+        else
+        {
+            // OpenAI embeddings → only show OpenAI AI model
+            useLocalAI = false;
+        }
+
+        return (embeddingProvider, useLocalAI, localModelName);
     }
 }

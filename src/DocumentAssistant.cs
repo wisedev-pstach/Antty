@@ -36,7 +36,7 @@ public class DocumentAssistant
     private static MultiBookSearchEngine? _searchEngine;
     private static List<(string filePath, string kbPath)>? _documents;
     private static IAgentContextExecutor? _assistantAgent;
-    private static List<MaIN.Domain.Entities.Message> _conversationHistory = new();
+    private static List<Message> _conversationHistory = new();
 
     /// <summary>
     /// Initialize the document assistant with loaded documents
@@ -59,7 +59,7 @@ public class DocumentAssistant
                 .WithTools(new ToolsConfigurationBuilder()
                     .AddTool<SearchDocumentsArgs>(
                         "search_documents",
-                        "INITIAL DISCOVERY ONLY: Use this ONCE at the start to find which document and page contains relevant information. Returns brief passages with document name and page number. After getting results, ALWAYS use read_page to get full context instead of searching again.",
+                        "Search for information in documents (has built-in retry with keyword extraction). If this returns no results, you can try calling it again with a completely different query approach.",
                         new
                         {
                             type = "object",
@@ -84,7 +84,7 @@ public class DocumentAssistant
                         SearchDocuments)
                     .AddTool<ReadPageArgs>(
                         "read_page",
-                        "PRIMARY TOOL: After search_documents gives you a page number, ALWAYS use this to read the full page content. This gives you complete information. Use this for follow-up questions instead of searching again. Much more reliable than search for getting detailed information.",
+                        "Read the full content of a specific page from a document.",
                         new
                         {
                             type = "object",
@@ -125,7 +125,7 @@ public class DocumentAssistant
                 .WithTools(new ToolsConfigurationBuilder()
                     .AddTool<SearchDocumentsArgs>(
                         "search_documents",
-                        "INITIAL DISCOVERY ONLY: Use this ONCE at the start to find which document and page contains relevant information. Returns brief passages with document name and page number. After getting results, ALWAYS use read_page to get full context instead of searching again.",
+                        "Search for information in documents (has built-in retry with keyword extraction). If this returns no results, you can try calling it again with a completely different query approach.",
                         new
                         {
                             type = "object",
@@ -150,7 +150,7 @@ public class DocumentAssistant
                         SearchDocuments)
                     .AddTool<ReadPageArgs>(
                         "read_page",
-                        "PRIMARY TOOL: After search_documents gives you a page number, ALWAYS use this to read the full page content. This gives you complete information. Use this for follow-up questions instead of searching again. Much more reliable than search for getting detailed information.",
+                        "Read the full content of a specific page from a document.",
                         new
                         {
                             type = "object",
@@ -235,7 +235,7 @@ public class DocumentAssistant
     }
 
     /// <summary>
-    /// Tool: Search documents semantically
+    /// Tool: Search documents semantically with automatic retry and fallback
     /// </summary>
     private static async Task<object> SearchDocuments(SearchDocumentsArgs args)
     {
@@ -246,11 +246,46 @@ public class DocumentAssistant
         AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine($"[dim]🔍 Searching for: {args.query}...[/]");
 
+        // Try original query first
         var results = await _searchEngine.SearchAllAsync(args.query);
         var topResults = results.Take(args.maxResults).ToList();
 
+        // If no results, try intelligent fallbacks
         if (topResults.Count == 0)
-            return "No relevant information found in the documents.";
+        {
+            AnsiConsole.MarkupLine("[dim]   No results, trying with keywords only...[/]");
+            
+            // Extract keywords (words longer than 3 chars, excluding common words)
+            var commonWords = new HashSet<string> { "the", "and", "for", "with", "that", "this", "from", "what", "how", "why", "when", "where", "which", "about" };
+            var keywords = args.query.ToLower()
+                .Split(new[] { ' ', ',', '.', '?', '!', ';', ':' }, StringSplitOptions.RemoveEmptyEntries)
+                .Where(w => w.Length > 3 && !commonWords.Contains(w))
+                .ToList();
+
+            if (keywords.Count > 0)
+            {
+                // Try 1: Keywords only (most important words)
+                var keywordQuery = string.Join(" ", keywords);
+                results = await _searchEngine.SearchAllAsync(keywordQuery);
+                topResults = results.Take(args.maxResults).ToList();
+
+                if (topResults.Count == 0 && keywords.Count > 1)
+                {
+                    AnsiConsole.MarkupLine("[dim]   Still no results, trying individual keywords...[/]");
+                    
+                    // Try 2: Most important keyword alone
+                    var mainKeyword = keywords.OrderByDescending(k => k.Length).First();
+                    results = await _searchEngine.SearchAllAsync(mainKeyword);
+                    topResults = results.Take(args.maxResults).ToList();
+                }
+            }
+        }
+
+        if (topResults.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[dim]   ✗ No results after multiple attempts[/]");
+            return "No relevant information found in the documents after trying multiple search strategies. The information may not be in the loaded documents, or try rephrasing your question with different keywords.";
+        }
 
         // Format results as simple text to avoid serialization issues
         var resultLines = new List<string>();
@@ -298,9 +333,22 @@ public class DocumentAssistant
         {
             // Load the knowledge base
             var json = await File.ReadAllTextAsync(doc.kbPath);
-            var chunks = JsonSerializer.Deserialize<List<RawChunk>>(json);
+            
+            List<RawChunk> chunks;
+            
+            // Try new format first (KnowledgeBase with Metadata)
+            try
+            {
+                var kb = JsonSerializer.Deserialize<KnowledgeBase>(json);
+                chunks = kb?.Chunks ?? new List<RawChunk>();
+            }
+            catch (JsonException)
+            {
+                // Fall back to old format (direct List<RawChunk>)
+                chunks = JsonSerializer.Deserialize<List<RawChunk>>(json) ?? new List<RawChunk>();
+            }
 
-            if (chunks == null || chunks.Count == 0)
+            if (chunks.Count == 0)
                 return "Knowledge base is empty.";
 
             // Find all chunks from the specified page
@@ -325,26 +373,15 @@ public class DocumentAssistant
     }
 
     private static string GetSystemPrompt() => """
-        You are a helpful document research assistant. You answer questions based on the user's documents.
+        You are a helpful research assistant. Answer user questions using their documents.
 
-        CRITICAL RULES - NEVER BREAK THESE:
-        1. NEVER mention "tools", "search_documents", "read_page" or any technical implementation
-        2. NEVER say "I tried to search" or "the search returned an error" or "serialization issue"
-        3. NEVER expose internal errors or failures to the user
-        4. If you encounter an error, just say: "I couldn't find that information in the documents."
-        5. Act like you're directly reading and searching the documents yourself, not using tools
-
-        WORKFLOW (internal only, don't mention this to users):
-        1. Use search_documents ONCE to find relevant pages
-        2. Use read_page to read full content from those pages
-        3. For follow-ups, read the same pages again instead of searching
-
-        RESPONSE STYLE:
-        - Natural and conversational
-        - Always cite sources: "According to [document name], page [number]..."
-        - If info not in docs, say: "I don't see that information in the loaded documents."
-        - Never mention errors, tools, or how you work internally
-
-        Your goal is to help users understand and find information in their documents through natural conversation.
+        Guidelines:
+        - Always try your best to find an answer
+        - search_documents has built-in retry, but you can call it multiple times with different queries if needed
+        - Don't give up - if one search fails, try again with different phrasing or keywords
+        - Use read_page to get full context from relevant pages
+        - Cite sources: "According to [document], page [number]..."
+        - Never mention tools or technical details
+        - Be conversational and helpful
         """;
 }
