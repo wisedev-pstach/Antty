@@ -6,6 +6,15 @@ public class AppConfig
 {
     public List<string> SelectedDocuments { get; set; } = new();
     public string ApiKey { get; set; } = "sk-YOUR-OPENAI-KEY-HERE";
+    public string AnthropicKey { get; set; } = "";
+    public string GeminiKey { get; set; } = "";
+    public string DeepSeekKey { get; set; } = "";
+    public string GroqKey { get; set; } = "";
+    public string XaiKey { get; set; } = "";
+
+    // Chat configuration
+    public string ChatBackend { get; set; } = "OpenAi"; // Serialized BackendType
+    public string ChatModel { get; set; } = "gpt-4o";
 
     // Embedding provider configuration
     public string EmbeddingProvider { get; set; } = "openai"; // "openai" or "local"

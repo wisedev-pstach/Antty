@@ -87,18 +87,25 @@ public class SearchEngine
     /// Searches the book for relevant content based on user question.
     /// This method handles: embedding the question, computing similarities, and returning top results.
     /// </summary>
-    public async Task<List<RawSearchResult>> SearchBookAsync(string userQuestion)
+    public async Task<List<RawSearchResult>> SearchBookAsync(string userQuestion, bool silent = false)
     {
         // 1. Embed Question
         float[] queryVector = Array.Empty<float>();
 
-        await AnsiConsole.Status()
-            .Spinner(Spinner.Known.Dots)
-            .SpinnerStyle(Style.Parse("yellow bold"))
-            .StartAsync("[yellow]Analyzing question...[/]", async ctx =>
-            {
-                queryVector = await _embeddingProvider.GenerateEmbeddingAsync(userQuestion);
-            });
+        if (silent)
+        {
+            queryVector = await _embeddingProvider.GenerateEmbeddingAsync(userQuestion);
+        }
+        else
+        {
+            await AnsiConsole.Status()
+                .Spinner(Spinner.Known.Dots)
+                .SpinnerStyle(Style.Parse("yellow bold"))
+                .StartAsync("[yellow]Analyzing question...[/]", async ctx =>
+                {
+                    queryVector = await _embeddingProvider.GenerateEmbeddingAsync(userQuestion);
+                });
+        }
 
         // Validate dimensions match
         if (queryVector.Length != _metadata.Dimensions)

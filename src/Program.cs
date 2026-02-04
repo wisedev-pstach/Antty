@@ -1,9 +1,12 @@
 ﻿using Antty;
 using Spectre.Console;
+using Spectre.Console.Rendering;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using MaIN.Core;
 using MaIN.Core.Hub;
+using MaIN.Domain.Configuration;
 
 partial class Program
 {
@@ -12,12 +15,6 @@ partial class Program
         // Enable UTF-8 encoding for emoji support
         Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-        // Initialize MaIN.NET framework for console apps
-        // TEMPORARILY DISABLED TO DEBUG
-        // var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
-        // services.AddMaIN(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
-        // var serviceProvider = services.BuildServiceProvider();
-        // serviceProvider.UseMaIN();
         var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
         services.AddMaIN(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
         var serviceProvider = services.BuildServiceProvider();
@@ -38,7 +35,7 @@ partial class Program
         var config = AppConfig.Load();
 
         // Configure providers and models (can be called again when switching)
-        var (embeddingProvider, useLocalAI, localModelName) = await ConfigureProvidersAsync(config);
+        var (embeddingProvider, backendType, localModelName) = await ConfigureProvidersAsync(config);
         
         if (embeddingProvider == null)
         {
@@ -161,15 +158,7 @@ partial class Program
         // 6. Main menu loop
         bool running = true;
 
-        // Prompt to start assistant immediately after loading
-        if (multiEngine.LoadedDocumentCount > 0)
-        {
-            AnsiConsole.WriteLine();
-            if (AnsiConsole.Confirm("[cyan]Start chatting with the assistant?[/]", true))
-            {
-                await TalkToAssistantAsync(config.ApiKey, multiEngine, documentsToProcess, useLocalAI, localModelName);
-            }
-        }
+        // Prompt to start assistant removed per user request
 
         while (running)
         {
@@ -182,7 +171,7 @@ partial class Program
 
             var choice = AnsiConsole.Prompt(
                 new SelectionPrompt<string>()
-                    .Title($"[cyan]What would you like to do?[/] [dim](Embeddings: {config.EmbeddingProvider})[/]")
+                    .Title($"[cyan]What would you like to do?[/] [dim](Embeddings: {config.EmbeddingProvider} | Model: {config.ChatBackend} - {config.ChatModel})[/]")
                     .PageSize(10)
                     .AddChoices(new[] {
                         "💬 Talk to Assistant",
@@ -197,7 +186,7 @@ partial class Program
 
             if (choice.StartsWith("💬"))
             {
-                await TalkToAssistantAsync(config.ApiKey, multiEngine, documentsToProcess, useLocalAI, localModelName);
+                await TalkToAssistantAsync(config, multiEngine, documentsToProcess, backendType, localModelName);
             }
             else if (choice.StartsWith("🔍"))
             {
@@ -222,7 +211,7 @@ partial class Program
                 embeddingProvider?.Dispose();
                 
                 // Run full configuration again
-                var (newEmbeddingProvider, newUseLocalAI, newLocalModelName) = await ConfigureProvidersAsync(config);
+                var (newEmbeddingProvider, newBackendType, newLocalModelName) = await ConfigureProvidersAsync(config);
                 
                 if (newEmbeddingProvider == null)
                 {
@@ -232,45 +221,56 @@ partial class Program
 
                 // Update configuration
                 embeddingProvider = newEmbeddingProvider;
-                useLocalAI = newUseLocalAI;
+                backendType = newBackendType;
                 localModelName = newLocalModelName;
 
                 AnsiConsole.WriteLine();
                 AnsiConsole.MarkupLine("[green]✓[/] Provider switched successfully!");
                 AnsiConsole.WriteLine();
                 
-                // Check if embedding provider actually changed (local <-> openai)
-                bool embeddingProviderChanged = oldEmbeddingProvider != config.EmbeddingProvider;
+                // Check if any selected documents are missing the index for the NEW provider
+                var missingIndicesCount = config.SelectedDocuments
+                    .Count(filePath => !File.Exists(AppConfig.GetKnowledgeBasePath(filePath, config.EmbeddingProvider)));
 
-                if (embeddingProviderChanged)
+                if (missingIndicesCount > 0)
                 {
-                    // Embedding provider changed - need to re-index
-                    AnsiConsole.MarkupLine("[yellow]⚠[/] Embedding provider changed. Documents need to be re-indexed.");
-                    var shouldReload = AnsiConsole.Confirm("[cyan]Re-index documents now?[/]", true);
+                    // Some or all indices are missing
+                    AnsiConsole.MarkupLine($"[yellow]⚠[/] Embedding provider changed. {missingIndicesCount} document(s) need to be indexed for [cyan]{config.EmbeddingProvider}[/].");
+                    var shouldReload = AnsiConsole.Confirm("[cyan]Index missing documents now?[/]", true);
                     
                     if (shouldReload)
                     {
                         AnsiConsole.WriteLine();
-                        AnsiConsole.Write(new Rule("[dim]Rebuilding Knowledge Bases[/]").RuleStyle("dim"));
+                        AnsiConsole.Write(new Rule("[dim]Loading Knowledge Bases[/]").RuleStyle("dim"));
                         AnsiConsole.WriteLine();
 
-                        // Rebuild knowledge bases with new provider
                         var newDocumentsToProcess = new List<(string filePath, string kbPath)>();
                         int rebuilt = 0;
+                        int usedCache = 0;
 
                         foreach (var filePath in config.SelectedDocuments)
                         {
                             var kbPath = AppConfig.GetKnowledgeBasePath(filePath, config.EmbeddingProvider);
                             newDocumentsToProcess.Add((filePath, kbPath));
 
-                            // Always rebuild when switching embedding providers
-                            AnsiConsole.MarkupLine($"[yellow]⚙ Re-indexing:[/] [cyan]{Path.GetFileName(filePath)}[/]");
-                            await IngestionBuilder.BuildDatabaseAsync(filePath, embeddingProvider, kbPath);
-                            rebuilt++;
+                            if (!File.Exists(kbPath))
+                            {
+                                AnsiConsole.MarkupLine($"[yellow]⚙ Indexing:[/] [cyan]{Path.GetFileName(filePath)}[/]");
+                                await IngestionBuilder.BuildDatabaseAsync(filePath, embeddingProvider, kbPath);
+                                rebuilt++;
+                            }
+                            else
+                            {
+                                AnsiConsole.MarkupLine($"[green]✓[/] Using existing cache for:[/] [cyan]{Path.GetFileName(filePath)}[/]");
+                                usedCache++;
+                            }
                         }
 
                         AnsiConsole.WriteLine();
-                        AnsiConsole.MarkupLine($"[green]✓[/] Re-indexed {rebuilt} document(s) with {config.EmbeddingProvider} embeddings");
+                        if (rebuilt > 0)
+                            AnsiConsole.MarkupLine($"[green]✓[/] Indexed {rebuilt} new document(s) with {config.EmbeddingProvider} embeddings");
+                        if (usedCache > 0)
+                            AnsiConsole.MarkupLine($"[dim]✓ Used {usedCache} existing {config.EmbeddingProvider} cache(s)[/]");
                         AnsiConsole.WriteLine();
 
                         // Reload multiEngine with new KBs
@@ -282,29 +282,35 @@ partial class Program
 
                         AnsiConsole.MarkupLine($"[green]✓[/] Loaded {multiEngine.LoadedDocumentCount} document(s)");
                     }
+                    else
+                    {
+                        // User chose not to re-index missing ones, but we should still reload what we have
+                        // (MultiBookSearchEngine handles missing files gracefully or we just reload old mappings)
+                        AnsiConsole.MarkupLine("[dim]Skipping re-indexing. Search might not work correctly for unindexed files.[/]");
+                        var partialDocuments = config.SelectedDocuments
+                            .Select(filePath => (filePath, AppConfig.GetKnowledgeBasePath(filePath, config.EmbeddingProvider)))
+                            .ToList();
+                        
+                        multiEngine.LoadDocuments(embeddingProvider, partialDocuments);
+                        documentsToProcess = partialDocuments;
+                    }
                 }
                 else
                 {
-                    // Only AI model changed - no need to re-index
-                    AnsiConsole.MarkupLine("[dim]AI model changed, but embeddings are the same. No re-indexing needed.[/]");
+                    // All indices exist! Just reload silently or with a quick check mark
+                    AnsiConsole.MarkupLine($"[green]✓[/] All documents already have indices for [cyan]{config.EmbeddingProvider}[/]. Reloading...");
                     
-                    // However, we still need to reload multiEngine with the new embedding provider instance
-                    // (we disposed the old one and created a new one)
-                    AnsiConsole.WriteLine();
-                    AnsiConsole.MarkupLine("[dim]Reloading documents with new provider instance...[/]");
-                    multiEngine.LoadDocuments(embeddingProvider, documentsToProcess);
+                    var cachedDocuments = config.SelectedDocuments
+                        .Select(filePath => (filePath, AppConfig.GetKnowledgeBasePath(filePath, config.EmbeddingProvider)))
+                        .ToList();
+
+                    multiEngine.LoadDocuments(embeddingProvider, cachedDocuments);
+                    documentsToProcess = cachedDocuments;
+                    
                     AnsiConsole.MarkupLine($"[green]✓[/] Loaded {multiEngine.LoadedDocumentCount} document(s)");
                 }
 
-                // Prompt to start assistant after switching
-                if (multiEngine.LoadedDocumentCount > 0)
-                {
-                    AnsiConsole.WriteLine();
-                    if (AnsiConsole.Confirm("[cyan]Start chatting with the assistant?[/]", true))
-                    {
-                        await TalkToAssistantAsync(config.ApiKey, multiEngine, documentsToProcess, useLocalAI, localModelName);
-                    }
-                }
+                // Prompt to start assistant removed per user request
             }
             else if (choice.StartsWith("📚"))
             {
@@ -389,7 +395,7 @@ partial class Program
         }
     }
 
-    static async Task TalkToAssistantAsync(string apiKey, MultiBookSearchEngine multiEngine, List<(string filePath, string kbPath)> documents, bool useLocalAI, string localModelName)
+    static async Task TalkToAssistantAsync(AppConfig config, MultiBookSearchEngine multiEngine, List<(string filePath, string kbPath)> documents, BackendType backendType, string modelName)
     {
         AnsiConsole.Write(new Rule("[bold cyan]💬 TALK TO ASSISTANT[/]").RuleStyle("cyan"));
         AnsiConsole.WriteLine();
@@ -398,7 +404,7 @@ partial class Program
         AnsiConsole.MarkupLine("[dim]Initializing AI assistant...[/]");
         try
         {
-            await DocumentAssistant.Initialize(apiKey, multiEngine, documents, useLocalAI, localModelName);
+            await DocumentAssistant.Initialize(config, multiEngine, documents, backendType, modelName);
             AnsiConsole.MarkupLine("[green]✓[/] Assistant ready!");
         }
         catch (Exception ex)
@@ -422,42 +428,120 @@ partial class Program
 
             AnsiConsole.WriteLine();
 
-            try
-            {
-                bool firstToken = true;
-                var thinkingTask = Task.Run(async () =>
-                {
-                    // Show thinking animation as a temporary status line (no "Assistant:" prefix)
-                    var spinner = new[] { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" };
-                    int spinnerIndex = 0;
-                    while (firstToken)
-                    {
-                        AnsiConsole.Markup($"\r[dim]{spinner[spinnerIndex]} thinking...[/]   ");
-                        spinnerIndex = (spinnerIndex + 1) % spinner.Length;
-                        await Task.Delay(100);
-                    }
-                });
+                var firstContentSignal = new TaskCompletionSource<bool>();
+                var pendingLogs = new List<string>();
+                var logLock = new object();
+                var printer = new StreamingMarkdownPrinter(() => firstContentSignal.TrySetResult(true));
+                using var cts = new CancellationTokenSource();
+                var responseEnumeration = DocumentAssistant.ChatAsync(userMessage, cts.Token).GetAsyncEnumerator();
 
-                await foreach (var token in DocumentAssistant.ChatAsync(userMessage))
+                void FlushToolLogs()
                 {
-                    if (firstToken)
+                    lock(logLock)
                     {
-                        // Stop animation and clear the thinking indicator completely
-                        firstToken = false;
-                        await Task.Delay(50); // Let animation stop
-                        AnsiConsole.Markup("\r                                                  \r"); // Clear line completely
-                        AnsiConsole.Markup($"[bold green]Assistant:[/] "); // Now show "Assistant:" label
-                    }
+                        if (pendingLogs.Count == 0) return;
+                        
+                        var table = new Table().HideHeaders().NoBorder();
+                        table.AddColumn("content");
+                        foreach (var log in pendingLogs)
+                        {
+                            // Foolproof strip of all residual [tags] to prevent literal markup visibility
+                            var clean = System.Text.RegularExpressions.Regex.Replace(log, @"\[.*?\]", "");
+                            clean = clean.Trim();
+                            
+                            // Using a dark grey and dimming to make it feel 'smaller' and less intrusive
+                            table.AddRow(new Text(clean, new Style(foreground: Color.Grey37, decoration: Decoration.Dim)));
+                        }
 
-                    AnsiConsole.Markup($"[green]{token.EscapeMarkup()}[/]");
+                        var panel = new Panel(table)
+                        {
+                            Border = BoxBorder.Rounded,
+                            BorderStyle = new Style(foreground: Color.Yellow, decoration: Decoration.Dim),
+                            Padding = new Padding(1, 0),
+                            Expand = false
+                        };
+
+                        AnsiConsole.Write(panel);
+                        pendingLogs.Clear();
+                    }
                 }
-            }
-            catch (Exception ex)
-            {
-                AnsiConsole.MarkupLine($"\n[red]Error: {ex.Message}[/]");
-            }
+                try
+                {
+                    // 1. Initial Header
+                    AnsiConsole.Write(new Rule("[green]Assistant[/]").LeftJustified());
+                    AnsiConsole.WriteLine();
 
-            AnsiConsole.WriteLine();
+                    DocumentAssistant.ToolLog = (msg) =>
+                    {
+                        lock(logLock) pendingLogs.Add(msg);
+                        firstContentSignal.TrySetResult(true);
+                    };
+
+                    // 2. Continuous Thinking - Keep spinner active until visible output appears
+                    bool hasNext = false;
+                    bool currentTokenAppended = false;
+
+                    await AnsiConsole.Status()
+                        .Spinner(Spinner.Known.Dots)
+                        .StartAsync("thinking...", async ctx => 
+                        {
+                            while (true)
+                            {
+                                hasNext = await responseEnumeration.MoveNextAsync();
+                                if (!hasNext) break;
+
+                                currentTokenAppended = false;
+
+                                // Exit early if we have logs or printer flushed a line
+                                if (pendingLogs.Count > 0 || firstContentSignal.Task.IsCompleted)
+                                    break;
+
+                                printer.Append(responseEnumeration.Current);
+                                currentTokenAppended = true;
+
+                                if (firstContentSignal.Task.IsCompleted)
+                                    break;
+                            }
+                        });
+
+                    // 3. Process remaining turn sequentially
+                    try
+                    {
+                        while (true)
+                        {
+                            if (pendingLogs.Count > 0)
+                            {
+                                FlushToolLogs();
+                            }
+
+                            if (!hasNext) break;
+
+                            if (!currentTokenAppended)
+                            {
+                                printer.Append(responseEnumeration.Current);
+                            }
+                            currentTokenAppended = false;
+
+                            hasNext = await responseEnumeration.MoveNextAsync();
+                        }
+                    }
+                    finally
+                    {
+                        // Final flush for any trailing logs
+                        FlushToolLogs();
+                        DocumentAssistant.ToolLog = null;
+                        printer.Finish();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    cts.Cancel(); // Stop background tools immediately
+                    DocumentAssistant.ToolLog = null; // Prevent leaks
+                    AnsiConsole.MarkupLine($"[bold red]Error:[/] [dim]({backendType})[/] {ex.Message}");
+                    if (ex.InnerException != null)
+                        AnsiConsole.MarkupLine($"[dim red]Inner: {ex.InnerException.Message}[/]");
+                }
+                AnsiConsole.WriteLine();
             AnsiConsole.WriteLine();
         }
     }
@@ -643,171 +727,380 @@ partial class Program
     /// Configure embedding provider and AI model (reusable for initial setup and mid-session switching)
     /// </summary>
     /// <returns>Tuple of (embeddingProvider, useLocalAI, localModelName)</returns>
-    static async Task<(Antty.Embedding.IEmbeddingProvider?, bool, string)> ConfigureProvidersAsync(AppConfig config)
+    /// <summary>
+    /// Configure embedding provider and AI model (Chat Backend)
+    /// </summary>
+    /// <returns>Tuple of (embeddingProvider, backendType, modelName)</returns>
+    /// <summary>
+    /// Configure embedding provider and AI model (Chat Backend)
+    /// </summary>
+    /// <returns>Tuple of (embeddingProvider, backendType, modelName)</returns>
+    static async Task<(Antty.Embedding.IEmbeddingProvider?, BackendType, string)> ConfigureProvidersAsync(AppConfig config)
     {
-        // 1. Choose Embedding Provider
-        AnsiConsole.Write(new Rule("[bold cyan]🔧 EMBEDDING CONFIGURATION[/]").RuleStyle("cyan"));
+        AnsiConsole.Write(new Rule("[bold cyan]🤖 ASSISTANT CONFIGURATION[/]").RuleStyle("cyan"));
         AnsiConsole.WriteLine();
 
-        var providerChoice = AnsiConsole.Prompt(
+        var modeChoice = AnsiConsole.Prompt(
             new SelectionPrompt<string>()
-                .Title("[cyan]Choose embedding provider:[/]")
+                .Title("[cyan]Choose Operating Mode:[/]")
                 .PageSize(10)
                 .AddChoices(new[] {
-                    "🌐 OpenAI (Cloud, requires API key)",
-                    "💻 Local (Offline, uses GGUF models)"
+                    "💻 Local (Offline) - Ollama + Local Embeddings",
+                    "☁️  Cloud (Online) - Cloud Models + OpenAI Embeddings"
                 }));
 
-        bool useLocalProvider = providerChoice.StartsWith("💻");
+        bool isLocalMode = modeChoice.StartsWith("💻");
+        BackendType backendType = BackendType.Ollama;
+        string modelName = "";
 
-        if (useLocalProvider)
+        if (isLocalMode)
         {
+            // --- LOCAL MODE ---
+            AnsiConsole.MarkupLine("[dim]Configuring for fully offline use...[/]");
             config.EmbeddingProvider = "local";
+            
+            // 1. Setup Local Embeddings
             config.LocalModelPath = await DownloadNomicModelAsync();
+            
+            // 2. Setup Local Chat (Ollama)
+            backendType = BackendType.Ollama;
+            if (!await OllamaManager.EnsureOllamaReadyAsync())
+            {
+                 AnsiConsole.MarkupLine("[red]Cannot proceed without Ollama.[/]");
+                 return (null, backendType, "");
+            }
+
+            modelName = await ConfigureOllamaModelAsync(config);
+            if (string.IsNullOrEmpty(modelName)) return (null, backendType, "");
         }
         else
         {
+            // --- CLOUD MODE ---
+            AnsiConsole.MarkupLine("[dim]Configuring for cloud-powered performance...[/]");
             config.EmbeddingProvider = "openai";
 
-            // Check if API key is configured
-            if (config.ApiKey == "sk-YOUR-OPENAI-KEY-HERE" || string.IsNullOrWhiteSpace(config.ApiKey))
+            // 1. Setup OpenAI Key (Required for Embeddings)
+            if (string.IsNullOrWhiteSpace(config.ApiKey) || config.ApiKey.StartsWith("sk-YOUR"))
             {
-                AnsiConsole.MarkupLine("[yellow]⚠ API Key not configured![/]");
                 config.ApiKey = AnsiConsole.Prompt(
-                    new TextPrompt<string>("[cyan]Enter your OpenAI API Key:[/]")
+                    new TextPrompt<string>("[cyan]Enter OpenAI API Key (for Embeddings):[/]")
                         .PromptStyle("green")
                         .Secret());
-                config.Save();
-                AnsiConsole.MarkupLine("[green]✓[/] API Key saved!");
-                AnsiConsole.WriteLine();
+            }
+
+            // 2. Choose Chat Provider
+            var cloudProvider = AnsiConsole.Prompt(
+                 new SelectionPrompt<string>()
+                     .Title("[cyan]Select Chat Provider:[/]")
+                     .PageSize(10)
+                     .AddChoices(new[] {
+                         "OpenAI",
+                         "Anthropic",
+                         "Google Gemini",
+                         "DeepSeek",
+                         "XAI (Grok)",
+                         "Groq"
+                     }));
+
+            string PromptKey(string name, string current) {
+                 if (!string.IsNullOrWhiteSpace(current) && !current.StartsWith("sk-YOUR")) return current;
+                 return AnsiConsole.Prompt(new TextPrompt<string>($"[cyan]Enter {name} API Key:[/]").Secret());
+            }
+
+            string SelectModel(Dictionary<string, string> options) {
+                 var choices = options.Keys.ToList();
+                 choices.Add("⌨️  Enter custom model ID...");
+                 var res = AnsiConsole.Prompt(new SelectionPrompt<string>().Title("[cyan]Select Model:[/]").AddChoices(choices));
+                 if (res.Contains("Enter custom")) return AnsiConsole.Prompt(new TextPrompt<string>("[cyan]Enter Model ID:[/]").Validate(s=>!string.IsNullOrWhiteSpace(s)));
+                 return options[res];
+            }
+
+            if (cloudProvider == "OpenAI") {
+                backendType = BackendType.OpenAi;
+                modelName = SelectModel(new Dictionary<string, string> {
+                    { "GPT-5.2 (Flagship)", "gpt-5.2" },
+                    { "o3 (Reasoning)", "o3" },
+                    { "GPT-5 Nano (Light)", "gpt-5-nano" },
+                    { "GPT-4o (Omni)", "gpt-4o" },
+                    { "o1 (Preview)", "o1" }
+                });
+            }
+            else if (cloudProvider == "Anthropic") {
+                backendType = BackendType.Anthropic;
+                config.AnthropicKey = PromptKey("Anthropic", config.AnthropicKey);
+                modelName = SelectModel(new Dictionary<string, string> {
+                    { "Claude 4.5 Sonnet", "claude-sonnet-4-5-20250929" },
+                    { "Claude 4.5 Haiku", "claude-haiku-4-5-20251001" },
+                    { "Claude 4.5 Opus", "claude-opus-4-5-20251101" },
+                    { "Claude 3.7 Sonnet", "claude-3-7-sonnet" }
+                });
+            }
+            else if (cloudProvider == "Google Gemini") {
+                backendType = BackendType.Gemini;
+                config.GeminiKey = PromptKey("Google Gemini", config.GeminiKey);
+                modelName = SelectModel(new Dictionary<string, string> {
+                    { "Gemini 3.0 Pro", "gemini-3.0-pro-preview" },
+                    { "Gemini 2.5 Pro", "gemini-2.5-pro" },
+                    { "Gemini 2.5 Flash", "gemini-2.5-flash" }
+                });
+            }
+            else if (cloudProvider == "DeepSeek") {
+                backendType = BackendType.DeepSeek;
+                config.DeepSeekKey = PromptKey("DeepSeek", config.DeepSeekKey);
+                modelName = SelectModel(new Dictionary<string, string> {
+                    { "DeepSeek R1 (Reasoner)", "deepseek-reasoner" },
+                    { "DeepSeek V3 (Chat)", "deepseek-chat" }
+                });
+            }
+            else if (cloudProvider == "XAI (Grok)") {
+                backendType = BackendType.Xai;
+                config.XaiKey = PromptKey("XAI (Grok)", config.XaiKey);
+                modelName = SelectModel(new Dictionary<string, string> {
+                    { "Grok-3", "grok-3" },
+                    { "Grok-2", "grok-2-1212" }
+                });
+            }
+            else if (cloudProvider == "Groq") {
+                backendType = BackendType.GroqCloud;
+                config.GroqKey = PromptKey("Groq", config.GroqKey);
+                modelName = SelectModel(new Dictionary<string, string> {
+                    { "Llama 3.3 70B", "llama-3.3-70b-versatile" },
+                    { "Llama 3.1 8B", "llama-3.1-8b-instant" },
+                    { "Mixtral 8x7B", "mixtral-8x7b-32768" }
+                });
             }
         }
 
+        config.ChatBackend = backendType.ToString();
+        config.ChatModel = modelName;
         config.Save();
         AnsiConsole.WriteLine();
 
-        // 2. Create embedding provider based on user choice
-        var embeddingProvider = useLocalProvider
+        // Create embedding provider
+        var embeddingProvider = isLocalMode
             ? (Antty.Embedding.IEmbeddingProvider)new Antty.Embedding.LocalEmbeddingProvider(config.LocalModelPath)
             : new Antty.Embedding.OpenAIEmbeddingProvider(config.ApiKey);
 
-        AnsiConsole.WriteLine();
+        return (embeddingProvider, backendType, modelName);
+    }
 
-        // 3. Choose AI Model (for DocumentAssistant)
-        AnsiConsole.Write(new Rule("[bold cyan]🤖 AI MODEL CONFIGURATION[/]").RuleStyle("cyan"));
-        AnsiConsole.WriteLine();
+    /// <summary>
+    /// Helper to configure Ollama Model
+    /// </summary>
+    static async Task<string> ConfigureOllamaModelAsync(AppConfig config)
+    {
+         var modelChoices = new List<string> { 
+             "💻 Granite4:3b (3B params, fast)", 
+             "💻 Llama3.1:8b (8B params, balanced)", 
+             "💻 Qwen3:14b (14B params, capable)" 
+         };
+         foreach (var c in config.CustomOllamaModels) modelChoices.Add($"📦 {c} (custom)");
+         modelChoices.Add("⌨️  Enter custom model name...");
 
-        bool useLocalAI;
-        string localModelName = "";
+         var localChoice = AnsiConsole.Prompt(
+             new SelectionPrompt<string>()
+                .Title("[cyan]Select Local Ollama Model:[/]")
+                .PageSize(10)
+                .AddChoices(modelChoices));
+         
+         string modelName = "";
+         if (localChoice.Contains("Enter custom")) {
+             modelName = AnsiConsole.Prompt(new TextPrompt<string>("[cyan]Enter Ollama model name:[/]").Validate(s => !string.IsNullOrWhiteSpace(s)));
+             if (!config.CustomOllamaModels.Contains(modelName)) { config.CustomOllamaModels.Add(modelName); }
+         } else if (localChoice.Contains("(custom)")) {
+             modelName = localChoice.Replace("📦 ", "").Replace(" (custom)", "").Trim();
+         } else {
+             if (localChoice.Contains("Granite")) modelName = "granite4:3b";
+             else if (localChoice.Contains("Llama")) modelName = "llama3.1:8b";
+             else if (localChoice.Contains("Qwen")) modelName = "qwen3:14b";
+             else modelName = "llama3.1:8b";
+         }
+         
+         if (!await OllamaManager.IsModelInstalledAsync(modelName)) {
+             AnsiConsole.MarkupLine($"[yellow]Model {modelName} not found locally.[/]");
+             if (AnsiConsole.Confirm($"Download {modelName}?")) {
+                 if (!await OllamaManager.PullModelAsync(modelName)) {
+                     AnsiConsole.MarkupLine("[red]Failed to download model.[/]");
+                     return ""; // Fail
+                 }
+             } else {
+                 return ""; // Fail
+             }
+         }
+         AnsiConsole.MarkupLine($"[green]✓[/] Using local model: [cyan]{modelName}[/]");
+         return modelName;
+    }
 
-        if (useLocalProvider)
+    /// <summary>
+    /// Advanced Markdown Renderer that creates Panels for code blocks
+    /// </summary>
+    static Spectre.Console.Rendering.IRenderable RenderMarkdown(string text)
+    {
+        var parts = new List<Spectre.Console.Rendering.IRenderable>();
+        
+        // Split by code blocks: ```language ... ```
+        var segments = System.Text.RegularExpressions.Regex.Split(text, @"(```[\s\S]*?```)");
+        
+        foreach (var segment in segments)
         {
-            // Local embeddings → only show local AI models 
-            // Build model choices including saved custom models
-            var modelChoices = new List<string>
+            if (segment.StartsWith("```") && segment.EndsWith("```") && segment.Length >= 6)
             {
-                "💻 Granite4:3b (3B params, small, fast)",
-                "💻 Llama3.1:8b (8B params, balanced)",
-                "💻 Qwen3:14b (14B params, most capable)"
-            };
-
-            // Add previously used custom models
-            foreach (var customModel in config.CustomOllamaModels.Distinct())
-            {
-                modelChoices.Add($"📦 {customModel} (custom)");
-            }
-
-            // Add "Enter custom model" option
-            modelChoices.Add("⌨️  Enter custom model name...");
-
-            var modelChoice = AnsiConsole.Prompt(
-                new SelectionPrompt<string>()
-                    .Title("[cyan]Choose local AI model for document assistant:[/]")
-                    .PageSize(15)
-                    .AddChoices(modelChoices));
-
-            useLocalAI = true;
-
-            if (modelChoice.Contains("Enter custom"))
-            {
-                // User wants to enter a custom model
-                localModelName = AnsiConsole.Prompt(
-                    new TextPrompt<string>("[cyan]Enter Ollama model name (e.g., mistral, llama2):[/]")
-                        .PromptStyle("yellow")
-                        .ValidationErrorMessage("[red]Model name cannot be empty[/]")
-                        .Validate(name => !string.IsNullOrWhiteSpace(name)));
-
-                // Save to custom models list
-                if (!config.CustomOllamaModels.Contains(localModelName))
-                {
-                    config.CustomOllamaModels.Add(localModelName);
-                    config.Save();
-                }
-            }
-            else if (modelChoice.Contains("(custom)"))
-            {
-                // Extract custom model name
-                localModelName = modelChoice.Replace("📦 ", "").Replace(" (custom)", "").Trim();
+                 // Code block processing
+                 var content = segment.Substring(3, segment.Length - 6);
+                 
+                 // Handle language identifier
+                 var firstLineEnd = content.IndexOf('\n');
+                 if (firstLineEnd >= 0) {
+                     var possibleLang = content.Substring(0, firstLineEnd).Trim();
+                     // Basic check if it's a lang tag
+                     if (!string.IsNullOrWhiteSpace(possibleLang) && !possibleLang.Contains(' ')) {
+                         content = content.Substring(firstLineEnd + 1);
+                     }
+                 }
+                 
+                 // Escape content for Markup
+                 content = content.Replace("[", "[[").Replace("]", "]]");
+                 
+                 parts.Add(new Panel(new Markup($"[green]{content}[/]"))
+                        .Border(BoxBorder.Rounded)
+                        .BorderColor(Color.Grey)
+                        .Expand());
             }
             else
             {
-                // Standard model selection
-                localModelName = modelChoice switch
-                {
-                    var s when s.Contains("Granite4:3b") => "granite4:3b",
-                    var s when s.Contains("Llama3.1:8b") => "llama3.1:8b",
-                    var s when s.Contains("Qwen3:14b") => "qwen3:14b",
-                    _ => "granite4:3b"
-                };
+                 // Normal text processing
+                 if (!string.IsNullOrWhiteSpace(segment))
+                 {
+                     var escaped = segment.Replace("[", "[[").Replace("]", "]]");
+                     // Inline formatting
+                     escaped = System.Text.RegularExpressions.Regex.Replace(escaped, @"`([^`]+)`", "[green]$1[/]");
+                     escaped = System.Text.RegularExpressions.Regex.Replace(escaped, @"\*\*([^*]+)\*\*", "[bold]$1[/]");
+                     escaped = System.Text.RegularExpressions.Regex.Replace(escaped, @"^#+\s+(.+)$", "[bold underline]$1[/]", System.Text.RegularExpressions.RegexOptions.Multiline);
+                     escaped = System.Text.RegularExpressions.Regex.Replace(escaped, @"^\s*-\s+", "  • ", System.Text.RegularExpressions.RegexOptions.Multiline);
+                     
+                     parts.Add(new Markup(escaped));
+                 }
             }
+        }
+        
+        return new Rows(parts);
+    }
+}
 
-            // Ensure Ollama is installed and running
-            AnsiConsole.WriteLine();
-            AnsiConsole.Write(new Rule("[bold cyan]🦙 OLLAMA SETUP[/]").RuleStyle("cyan"));
-            AnsiConsole.WriteLine();
+/// <summary>
+/// Helper to stream markdown response line-by-line with nice code block formatting
+/// </summary>
+public class StreamingMarkdownPrinter
+{
+    private bool _inCodeBlock = false;
+    private System.Text.StringBuilder _lineBuffer = new System.Text.StringBuilder();
+    private System.Text.StringBuilder _fullContent = new System.Text.StringBuilder();
+    private Action? _onFirstPrint;
 
-            if (!await OllamaManager.EnsureOllamaReadyAsync())
+    public StreamingMarkdownPrinter(Action? onFirstPrint = null)
+    {
+        _onFirstPrint = onFirstPrint;
+    }
+
+    public string GetFullContent() => _fullContent.ToString();
+    public string GetLastLine() => _lineBuffer.ToString();
+
+    public void Append(string token)
+    {
+        foreach (var c in token)
+        {
+            if (c == '\n')
             {
-                AnsiConsole.MarkupLine("[red]Cannot proceed without Ollama. Please install it and try again.[/]");
-                return (null, false, "");
-            }
-
-            AnsiConsole.WriteLine();
-
-            // Check if model is already installed
-            if (!await OllamaManager.IsModelInstalledAsync(localModelName))
-            {
-                AnsiConsole.MarkupLine($"[yellow]Model {localModelName} not found locally[/]");
-
-                var shouldDownload = AnsiConsole.Confirm(
-                    $"[cyan]Would you like to download {localModelName}?[/]",
-                    true);
-
-                if (shouldDownload)
-                {
-                    if (!await OllamaManager.PullModelAsync(localModelName))
-                    {
-                        AnsiConsole.MarkupLine("[red]✗[/] Failed to download model");
-                        return (null, false, "");
-                    }
-                }
-                else
-                {
-                    AnsiConsole.MarkupLine("[yellow]Cannot proceed without a model[/]");
-                    return (null, false, "");
-                }
+                FlushLine();
+                _lineBuffer.Clear();
             }
             else
             {
-                AnsiConsole.MarkupLine($"[green]✓[/] Model {localModelName} is ready");
+                _lineBuffer.Append(c);
+                _fullContent.Append(c);
             }
+        }
+    }
+
+    public void Finish()
+    {
+        if (_lineBuffer.Length > 0)
+        {
+            FlushLine();
+        }
+    }
+    private void FlushLine()
+    {
+        var line = _lineBuffer.ToString();
+        var trimmed = line.TrimEnd(); 
+        
+        // Signal that we've finally printed something
+        if (_onFirstPrint != null)
+        {
+            _onFirstPrint();
+            _onFirstPrint = null;
+        }
+        
+        // Check for code block markers (simple detection)
+        if (line.TrimStart().StartsWith("```"))
+        {
+            _inCodeBlock = !_inCodeBlock;
+            if (_inCodeBlock)
+            {
+                // Start of block
+                var lang = line.Trim().Trim('`').Trim();
+                // Nice visual header for code block
+                AnsiConsole.MarkupLine($"[grey]╭───[/] [cyan]{lang}[/] [grey]──────────────────────────────────────────────────[/]");
+            }
+            else
+            {
+                // End of block
+                AnsiConsole.MarkupLine($"[grey]╰────────────────────────────────────────────────────────[/]");
+            }
+            return;
+        }
+
+        if (_inCodeBlock)
+        {
+            // Print with left border and raw content (to avoid Markup errors on code, but green color)
+            // Escaping brackets is crucial for Markup
+            var escaped = line.Replace("[", "[[[[").Replace("]", "]]]]"); // Escape for Markup
+            escaped = escaped.Replace("[[[[", "[[").Replace("]]]]", "]]");
+            
+            AnsiConsole.MarkupLine($"[grey]│[/] [green]{escaped}[/]");
         }
         else
         {
-            // OpenAI embeddings → only show OpenAI AI model
-            useLocalAI = false;
-        }
+            // Normal markdown rendering for text lines
+            if (string.IsNullOrWhiteSpace(line)) {
+                AnsiConsole.WriteLine();
+                return;
+            }
 
-        return (embeddingProvider, useLocalAI, localModelName);
+            // Basic Markdown regex-based rendering (reused logic)
+            var escaped = line.Replace("[", "[[").Replace("]", "]]");
+            
+            try 
+            {
+                // Inline formatting
+                // Code
+                escaped = System.Text.RegularExpressions.Regex.Replace(escaped, @"`([^`]+)`", "[green]$1[/]");
+                // Bold
+                escaped = System.Text.RegularExpressions.Regex.Replace(escaped, @"\*\*([^*]+)\*\*", "[bold]$1[/]");
+                // Headers (only if line starts with #)
+                if (line.TrimStart().StartsWith("#"))
+                     escaped = System.Text.RegularExpressions.Regex.Replace(escaped, @"^#+\s+(.+)$", "[bold underline]$1[/]");
+                // List items
+                if (line.TrimStart().StartsWith("-"))
+                     escaped = System.Text.RegularExpressions.Regex.Replace(escaped, @"^\s*-\s+", "  • ");
+                
+                AnsiConsole.MarkupLine(escaped);
+            }
+            catch 
+            {
+                // Fallback
+                AnsiConsole.WriteLine(line);
+            }
+        }
     }
 }

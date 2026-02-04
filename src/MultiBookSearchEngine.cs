@@ -44,11 +44,11 @@ public class MultiBookSearchEngine
     /// <summary>
     /// Search across all loaded documents and aggregate results
     /// </summary>
-    public async Task<List<RawSearchResult>> SearchAllAsync(string userQuestion)
+    public async Task<List<RawSearchResult>> SearchAllAsync(string userQuestion, bool silent = false)
     {
         if (_engines.Count == 0)
         {
-            AnsiConsole.MarkupLine("[yellow]⚠ No documents loaded![/]");
+            if (!silent) AnsiConsole.MarkupLine("[yellow]⚠ No documents loaded![/]");
             return new List<RawSearchResult>();
         }
 
@@ -57,7 +57,7 @@ public class MultiBookSearchEngine
         // Search each document
         foreach (var (bookName, engine) in _engines)
         {
-            var results = await engine.SearchBookAsync(userQuestion);
+            var results = await engine.SearchBookAsync(userQuestion, silent);
 
             // Add book source to results
             foreach (var result in results)
