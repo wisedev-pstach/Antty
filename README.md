@@ -17,9 +17,8 @@ Built on [**MaIN.NET**](https://github.com/wisedev-code/MaIN.NET) for multi-prov
 
 ### Windows
 
-```
-iwr https://raw.githubusercontent.com/wisedev-pstach/Antty/main/install.cmd -OutFile $env:TEMP\antty-install.cmd
-& $env:TEMP\antty-install.cmd
+```powershell
+iwr https://raw.githubusercontent.com/wisedev-pstach/Antty/main/install.cmd -OutFile $env:TEMP\antty-install.cmd; & $env:TEMP\antty-install.cmd
 ```
 
 ### Linux/macOS
