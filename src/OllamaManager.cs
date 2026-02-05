@@ -482,48 +482,132 @@ public static class OllamaManager
             }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                // Try winget on Windows
-                return await AnsiConsole.Status()
-                    .Spinner(Spinner.Known.Dots)
-                    .SpinnerStyle(Style.Parse("cyan bold"))
-                    .StartAsync("[cyan]Installing Ollama via winget...[/]", async ctx =>
+                // First, try to check if winget is available
+                bool hasWinget = false;
+                try
+                {
+                    var checkWinget = new ProcessStartInfo
                     {
-                        var startInfo = new ProcessStartInfo
-                        {
-                            FileName = "cmd.exe",
-                            Arguments = "/c winget install Ollama.Ollama -e --silent --accept-source-agreements --accept-package-agreements",
-                            RedirectStandardOutput = true,
-                            RedirectStandardError = true,
-                            UseShellExecute = false,
-                            CreateNoWindow = true
-                        };
+                        FileName = "cmd.exe",
+                        Arguments = "/c where winget",
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+                    using var checkProcess = Process.Start(checkWinget);
+                    if (checkProcess != null)
+                    {
+                        await checkProcess.WaitForExitAsync();
+                        hasWinget = checkProcess.ExitCode == 0;
+                    }
+                }
+                catch { }
 
-                        using var process = Process.Start(startInfo);
-                        if (process == null)
+                if (hasWinget)
+                {
+                    // Try winget on Windows
+                    return await AnsiConsole.Status()
+                        .Spinner(Spinner.Known.Dots)
+                        .SpinnerStyle(Style.Parse("cyan bold"))
+                        .StartAsync("[cyan]Installing Ollama via winget...[/]", async ctx =>
                         {
-                            AnsiConsole.MarkupLine("[red]✗[/] Failed to start installation");
-                            return false;
-                        }
-
-                        await process.WaitForExitAsync();
-
-                        if (process.ExitCode == 0)
-                        {
-                            ctx.Status("[green]✓ Ollama installed successfully[/]");
-                            await Task.Delay(500);
-                            return true;
-                        }
-                        else
-                        {
-                            var error = await process.StandardError.ReadToEndAsync();
-                            AnsiConsole.MarkupLine($"[red]✗[/] Installation failed");
-                            if (!string.IsNullOrEmpty(error))
+                            var startInfo = new ProcessStartInfo
                             {
-                                AnsiConsole.MarkupLine($"[dim]{error.Split('\n')[0]}[/]");
+                                FileName = "cmd.exe",
+                                Arguments = "/c winget install Ollama.Ollama -e --silent --accept-source-agreements --accept-package-agreements",
+                                RedirectStandardOutput = true,
+                                RedirectStandardError = true,
+                                UseShellExecute = false,
+                                CreateNoWindow = true
+                            };
+
+                            using var process = Process.Start(startInfo);
+                            if (process == null)
+                            {
+                                AnsiConsole.MarkupLine("[red]✗[/] Failed to start installation");
+                                return false;
                             }
-                            return false;
-                        }
-                    });
+
+                            await process.WaitForExitAsync();
+
+                            if (process.ExitCode == 0)
+                            {
+                                ctx.Status("[green]✓ Ollama installed successfully[/]");
+                                await Task.Delay(500);
+                                return true;
+                            }
+                            else
+                            {
+                                var error = await process.StandardError.ReadToEndAsync();
+                                AnsiConsole.MarkupLine($"[red]✗[/] Installation failed");
+                                if (!string.IsNullOrEmpty(error))
+                                {
+                                    AnsiConsole.MarkupLine($"[dim]{error.Split('\n')[0]}[/]");
+                                }
+                                return false;
+                            }
+                        });
+                }
+                else
+                {
+                    // Fallback: Download and run Ollama installer directly
+                    return await AnsiConsole.Status()
+                        .Spinner(Spinner.Known.Dots)
+                        .SpinnerStyle(Style.Parse("cyan bold"))
+                        .StartAsync("[cyan]Downloading Ollama installer...[/]", async ctx =>
+                        {
+                            try
+                            {
+                                var installerPath = Path.Combine(Path.GetTempPath(), "OllamaSetup.exe");
+                                
+                                // Download installer
+                                using var client = new HttpClient();
+                                var installerBytes = await client.GetByteArrayAsync("https://ollama.com/download/OllamaSetup.exe");
+                                await File.WriteAllBytesAsync(installerPath, installerBytes);
+                                
+                                ctx.Status("[cyan]Running Ollama installer...[/]");
+                                
+                                // Run installer silently
+                                var startInfo = new ProcessStartInfo
+                                {
+                                    FileName = installerPath,
+                                    Arguments = "/S",  // Silent install
+                                    UseShellExecute = true,
+                                    CreateNoWindow = false
+                                };
+
+                                using var process = Process.Start(startInfo);
+                                if (process == null)
+                                {
+                                    AnsiConsole.MarkupLine("[red]✗[/] Failed to start installer");
+                                    return false;
+                                }
+
+                                await process.WaitForExitAsync();
+                                
+                                // Clean up
+                                try { File.Delete(installerPath); } catch { }
+
+                                if (process.ExitCode == 0)
+                                {
+                                    ctx.Status("[green]✓ Ollama installed successfully[/]");
+                                    await Task.Delay(500);
+                                    return true;
+                                }
+                                else
+                                {
+                                    AnsiConsole.MarkupLine($"[red]✗[/] Installer exited with code {process.ExitCode}");
+                                    return false;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                AnsiConsole.MarkupLine($"[red]✗[/] Download failed: {ex.Message}");
+                                return false;
+                            }
+                        });
+                }
             }
         }
         catch (Exception ex)
