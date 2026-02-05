@@ -569,14 +569,14 @@ public static class OllamaManager
                                 
                                 ctx.Status("[cyan]Running Ollama installer...[/]");
                                 
-                                // Run installer silently (Ollama uses NSIS installer)
+                                // Run installer completely hidden using PowerShell
+                                var psCommand = $"Start-Process -FilePath '{installerPath}' -ArgumentList '/S' -WindowStyle Hidden -Wait";
                                 var startInfo = new ProcessStartInfo
                                 {
-                                    FileName = installerPath,
-                                    Arguments = "/S",  // Silent install for NSIS
+                                    FileName = "powershell.exe",
+                                    Arguments = $"-NoProfile -NonInteractive -Command \"{psCommand}\"",
                                     UseShellExecute = false,
                                     CreateNoWindow = true,
-                                    WindowStyle = ProcessWindowStyle.Hidden,
                                     RedirectStandardOutput = true,
                                     RedirectStandardError = true
                                 };
