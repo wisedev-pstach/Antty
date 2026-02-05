@@ -25,10 +25,10 @@ try {
     Write-Host "Running installer..." -ForegroundColor Yellow
     Write-Host ""
     
-    # Run installer with its directory as working directory, but don't stay there
+    # Run installer with execution policy bypass
     Push-Location $installerDir
     try {
-        & $installerPath
+        powershell.exe -ExecutionPolicy Bypass -NoProfile -File $installerPath
     } finally {
         Pop-Location
     }
