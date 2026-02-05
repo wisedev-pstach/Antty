@@ -569,13 +569,16 @@ public static class OllamaManager
                                 
                                 ctx.Status("[cyan]Running Ollama installer...[/]");
                                 
-                                // Run installer silently
+                                // Run installer silently (Ollama uses NSIS installer)
                                 var startInfo = new ProcessStartInfo
                                 {
                                     FileName = installerPath,
-                                    Arguments = "/S",  // Silent install
-                                    UseShellExecute = true,
-                                    CreateNoWindow = false
+                                    Arguments = "/S",  // Silent install for NSIS
+                                    UseShellExecute = false,
+                                    CreateNoWindow = true,
+                                    WindowStyle = ProcessWindowStyle.Hidden,
+                                    RedirectStandardOutput = true,
+                                    RedirectStandardError = true
                                 };
 
                                 using var process = Process.Start(startInfo);
