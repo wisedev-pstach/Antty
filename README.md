@@ -18,12 +18,13 @@ Built on [**MaIN.NET**](https://github.com/wisedev-code/MaIN.NET) for multi-prov
 ### Windows
 
 ```powershell
-iwr https://raw.githubusercontent.com/wisedev-pstach/Antty/main/install.cmd -OutFile $env:TEMP\antty-install.cmd; & $env:TEMP\antty-install.cmd
+irm https://raw.githubusercontent.com/wisedev-pstach/Antty/main/bootstrap.ps1 | iex
 ```
 
 ### Linux/macOS
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/wisedev-pstach/Antty/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/wisedev-pstach/Antty/main/bootstrap.sh | bash
 ```
 
 > **Note:** After installation, restart your terminal, then run `antty` from anywhere.
