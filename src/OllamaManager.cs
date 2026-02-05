@@ -490,8 +490,8 @@ public static class OllamaManager
                     {
                         var startInfo = new ProcessStartInfo
                         {
-                            FileName = "winget",
-                            Arguments = "install Ollama.Ollama -e --silent",
+                            FileName = "cmd.exe",
+                            Arguments = "/c winget install Ollama.Ollama -e --silent --accept-source-agreements --accept-package-agreements",
                             RedirectStandardOutput = true,
                             RedirectStandardError = true,
                             UseShellExecute = false,
@@ -515,7 +515,12 @@ public static class OllamaManager
                         }
                         else
                         {
+                            var error = await process.StandardError.ReadToEndAsync();
                             AnsiConsole.MarkupLine($"[red]✗[/] Installation failed");
+                            if (!string.IsNullOrEmpty(error))
+                            {
+                                AnsiConsole.MarkupLine($"[dim]{error.Split('\n')[0]}[/]");
+                            }
                             return false;
                         }
                     });
