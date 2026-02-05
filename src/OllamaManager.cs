@@ -73,9 +73,20 @@ public static class OllamaManager
                 return true;
             }
 
+            // Determine executable path - check local install first for fresh installs
+            var fileName = "ollama";
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                var localOllama = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Ollama", "ollama.exe");
+                if (File.Exists(localOllama))
+                {
+                    fileName = localOllama;
+                }
+            }
+
             var startInfo = new ProcessStartInfo
             {
-                FileName = "ollama",
+                FileName = fileName,
                 Arguments = "serve",
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -111,8 +122,8 @@ public static class OllamaManager
 
             AnsiConsole.MarkupLine("[cyan]⏳[/] Starting Ollama service...");
 
-            // Wait for service to be ready with progress
-            for (int i = 0; i < 10; i++)
+            // Wait for service to be ready with progress (increased timeout for first run)
+            for (int i = 0; i < 30; i++)
             {
                 await Task.Delay(1000);
 
@@ -482,100 +493,50 @@ public static class OllamaManager
             }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                // First, try to check if winget is available
-                bool hasWinget = false;
-                try
-                {
-                    var checkWinget = new ProcessStartInfo
+                // Install Ollama from GitHub releases (zip) - silent and reliable
+                return await AnsiConsole.Status()
+                    .Spinner(Spinner.Known.Dots)
+                    .SpinnerStyle(Style.Parse("cyan bold"))
+                    .StartAsync("[cyan]Downloading Ollama...[/]", async ctx =>
                     {
-                        FileName = "cmd.exe",
-                        Arguments = "/c where winget",
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    };
-                    using var checkProcess = Process.Start(checkWinget);
-                    if (checkProcess != null)
-                    {
-                        await checkProcess.WaitForExitAsync();
-                        hasWinget = checkProcess.ExitCode == 0;
-                    }
-                }
-                catch { }
-
-                if (hasWinget)
-                {
-                    // Try winget on Windows
-                    return await AnsiConsole.Status()
-                        .Spinner(Spinner.Known.Dots)
-                        .SpinnerStyle(Style.Parse("cyan bold"))
-                        .StartAsync("[cyan]Installing Ollama via winget...[/]", async ctx =>
+                        try
                         {
-                            var startInfo = new ProcessStartInfo
+                            // Create Ollama directory in user's AppData
+                            var ollamaDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Ollama");
+                            Directory.CreateDirectory(ollamaDir);
+                            
+                            var ollamaExePath = Path.Combine(ollamaDir, "ollama.exe");
+                            
+                            // Download Ollama zip from GitHub releases
+                            ctx.Status("[cyan]Downloading Ollama release...[/]");
+                            using var client = new HttpClient();
+                            client.Timeout = TimeSpan.FromMinutes(10);
+                            
+                            // Direct link to latest Windows release zip
+                            var zipUrl = "https://github.com/ollama/ollama/releases/latest/download/ollama-windows-amd64.zip";
+                            var zipPath = Path.Combine(Path.GetTempPath(), "ollama.zip");
+                            
+                            var zipBytes = await client.GetByteArrayAsync(zipUrl);
+                            await File.WriteAllBytesAsync(zipPath, zipBytes);
+                            
+                            ctx.Status("[cyan]Extracting Ollama...[/]");
+                            
+                            // Extract ollama.exe from zip
+                            try 
                             {
-                                FileName = "cmd.exe",
-                                Arguments = "/c winget install Ollama.Ollama -e --silent --accept-source-agreements --accept-package-agreements",
-                                RedirectStandardOutput = true,
-                                RedirectStandardError = true,
-                                UseShellExecute = false,
-                                CreateNoWindow = true
-                            };
-
-                            using var process = Process.Start(startInfo);
-                            if (process == null)
-                            {
-                                AnsiConsole.MarkupLine("[red]✗[/] Failed to start installation");
-                                return false;
+                                System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, ollamaDir, true);
                             }
-
-                            await process.WaitForExitAsync();
-
-                            if (process.ExitCode == 0)
+                            finally
                             {
-                                ctx.Status("[green]✓ Ollama installed successfully[/]");
-                                await Task.Delay(500);
-                                return true;
+                                // Cleanup zip
+                                if (File.Exists(zipPath)) File.Delete(zipPath);
                             }
-                            else
+                            
+                            // Verify extraction
+                            if (!File.Exists(ollamaExePath))
                             {
-                                var error = await process.StandardError.ReadToEndAsync();
-                                AnsiConsole.MarkupLine($"[red]✗[/] Installation failed");
-                                if (!string.IsNullOrEmpty(error))
-                                {
-                                    AnsiConsole.MarkupLine($"[dim]{error.Split('\n')[0]}[/]");
-                                }
-                                return false;
+                                throw new FileNotFoundException("ollama.exe not found in downloaded package");
                             }
-                        });
-                }
-                else
-                {
-                    // Fallback: Download Ollama binaries directly (no installer GUI)
-                    return await AnsiConsole.Status()
-                        .Spinner(Spinner.Known.Dots)
-                        .SpinnerStyle(Style.Parse("cyan bold"))
-                        .StartAsync("[cyan]Downloading Ollama...[/]", async ctx =>
-                        {
-                            try
-                            {
-                                // Create Ollama directory in user's AppData
-                                var ollamaDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Ollama");
-                                Directory.CreateDirectory(ollamaDir);
-                                
-                                var ollamaExePath = Path.Combine(ollamaDir, "ollama.exe");
-                                
-                                // Download Ollama executable directly
-                                ctx.Status("[cyan]Downloading Ollama binary...[/]");
-                                using var client = new HttpClient();
-                                client.Timeout = TimeSpan.FromMinutes(10);
-                                
-                                // Download the Windows CLI binary from Ollama's CDN
-                                var binaryUrl = "https://ollama.com/download/ollama-windows-amd64.exe";
-                                var binaryBytes = await client.GetByteArrayAsync(binaryUrl);
-                                await File.WriteAllBytesAsync(ollamaExePath, binaryBytes);
-                                
-                                ctx.Status("[cyan]Configuring Ollama...[/]");
                                 
                                 // Add to PATH
                                 var userPath = Environment.GetEnvironmentVariable("Path", EnvironmentVariableTarget.User) ?? "";
@@ -598,7 +559,6 @@ public static class OllamaManager
                                 return false;
                             }
                         });
-                }
             }
         }
         catch (Exception ex)
