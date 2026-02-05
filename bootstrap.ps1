@@ -1,14 +1,13 @@
 # Antty Bootstrap Installer
-# This script clones the repository and runs the full installer
+# This script downloads the repository and runs the full installer
 
 $ErrorActionPreference = 'Stop'
 
 Write-Host "Antty Installer" -ForegroundColor Cyan
 Write-Host ""
 
-$originalDir = Get-Location
-$tempDir = Join-Path $env:TEMP "antty-installer"
-$zipPath = Join-Path $env:TEMP "antty.zip"
+$tempDir = Join-Path $env:TEMP "antty-installer-$(Get-Random)"
+$zipPath = Join-Path $env:TEMP "antty-$(Get-Random).zip"
 
 try {
     # Download repository as zip
@@ -17,24 +16,27 @@ try {
     
     # Extract
     Write-Host "Extracting..." -ForegroundColor Yellow
-    if (Test-Path $tempDir) {
-        Remove-Item $tempDir -Recurse -Force
-    }
     Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
     
-    # Run the real installer
-    $installerPath = Join-Path $tempDir "Antty-main\install.ps1"
+    # Run the real installer without changing directory
+    $installerDir = Join-Path $tempDir "Antty-main"
+    $installerPath = Join-Path $installerDir "install.ps1"
+    
     Write-Host "Running installer..." -ForegroundColor Yellow
     Write-Host ""
     
-    Set-Location (Join-Path $tempDir "Antty-main")
-    & $installerPath
-    
-    # Return to original directory before cleanup
-    Set-Location $originalDir
+    # Run installer with its directory as working directory, but don't stay there
+    Push-Location $installerDir
+    try {
+        & $installerPath
+    } finally {
+        Pop-Location
+    }
     
 } finally {
-    # Cleanup
+    # Cleanup - give a moment for any file handles to close
+    Start-Sleep -Milliseconds 500
+    
     if (Test-Path $zipPath) {
         Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
     }
