@@ -561,8 +561,9 @@ public static class OllamaManager
                             {
                                 var installerPath = Path.Combine(Path.GetTempPath(), "OllamaSetup.exe");
                                 
-                                // Download installer
+                                // Download installer with extended timeout
                                 using var client = new HttpClient();
+                                client.Timeout = TimeSpan.FromMinutes(10); // Ollama installer is large
                                 var installerBytes = await client.GetByteArrayAsync("https://ollama.com/download/OllamaSetup.exe");
                                 await File.WriteAllBytesAsync(installerPath, installerBytes);
                                 
