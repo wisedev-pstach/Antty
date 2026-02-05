@@ -551,63 +551,50 @@ public static class OllamaManager
                 }
                 else
                 {
-                    // Fallback: Download and run Ollama installer directly
+                    // Fallback: Download Ollama binaries directly (no installer GUI)
                     return await AnsiConsole.Status()
                         .Spinner(Spinner.Known.Dots)
                         .SpinnerStyle(Style.Parse("cyan bold"))
-                        .StartAsync("[cyan]Downloading Ollama installer...[/]", async ctx =>
+                        .StartAsync("[cyan]Downloading Ollama...[/]", async ctx =>
                         {
                             try
                             {
-                                var installerPath = Path.Combine(Path.GetTempPath(), "OllamaSetup.exe");
+                                // Create Ollama directory in user's AppData
+                                var ollamaDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Ollama");
+                                Directory.CreateDirectory(ollamaDir);
                                 
-                                // Download installer with extended timeout
+                                var ollamaExePath = Path.Combine(ollamaDir, "ollama.exe");
+                                
+                                // Download Ollama executable directly
+                                ctx.Status("[cyan]Downloading Ollama binary...[/]");
                                 using var client = new HttpClient();
-                                client.Timeout = TimeSpan.FromMinutes(10); // Ollama installer is large
-                                var installerBytes = await client.GetByteArrayAsync("https://ollama.com/download/OllamaSetup.exe");
-                                await File.WriteAllBytesAsync(installerPath, installerBytes);
+                                client.Timeout = TimeSpan.FromMinutes(10);
                                 
-                                ctx.Status("[cyan]Running Ollama installer...[/]");
+                                // Download the Windows CLI binary from Ollama's CDN
+                                var binaryUrl = "https://ollama.com/download/ollama-windows-amd64.exe";
+                                var binaryBytes = await client.GetByteArrayAsync(binaryUrl);
+                                await File.WriteAllBytesAsync(ollamaExePath, binaryBytes);
                                 
-                                // Run installer completely hidden using PowerShell
-                                var psCommand = $"Start-Process -FilePath '{installerPath}' -ArgumentList '/S' -WindowStyle Hidden -Wait";
-                                var startInfo = new ProcessStartInfo
-                                {
-                                    FileName = "powershell.exe",
-                                    Arguments = $"-NoProfile -NonInteractive -Command \"{psCommand}\"",
-                                    UseShellExecute = false,
-                                    CreateNoWindow = true,
-                                    RedirectStandardOutput = true,
-                                    RedirectStandardError = true
-                                };
-
-                                using var process = Process.Start(startInfo);
-                                if (process == null)
-                                {
-                                    AnsiConsole.MarkupLine("[red]✗[/] Failed to start installer");
-                                    return false;
-                                }
-
-                                await process.WaitForExitAsync();
+                                ctx.Status("[cyan]Configuring Ollama...[/]");
                                 
-                                // Clean up
-                                try { File.Delete(installerPath); } catch { }
-
-                                if (process.ExitCode == 0)
+                                // Add to PATH
+                                var userPath = Environment.GetEnvironmentVariable("Path", EnvironmentVariableTarget.User) ?? "";
+                                if (!userPath.Contains(ollamaDir))
                                 {
-                                    ctx.Status("[green]✓ Ollama installed successfully[/]");
-                                    await Task.Delay(500);
-                                    return true;
+                                    var newPath = string.IsNullOrEmpty(userPath) ? ollamaDir : $"{ollamaDir};{userPath}";
+                                    Environment.SetEnvironmentVariable("Path", newPath, EnvironmentVariableTarget.User);
+                                    
+                                    // Also update current process PATH
+                                    Environment.SetEnvironmentVariable("Path", $"{ollamaDir};{Environment.GetEnvironmentVariable("Path")}");
                                 }
-                                else
-                                {
-                                    AnsiConsole.MarkupLine($"[red]✗[/] Installer exited with code {process.ExitCode}");
-                                    return false;
-                                }
+                                
+                                ctx.Status("[green]✓ Ollama installed successfully[/]");
+                                await Task.Delay(500);
+                                return true;
                             }
                             catch (Exception ex)
                             {
-                                AnsiConsole.MarkupLine($"[red]✗[/] Download failed: {ex.Message}");
+                                AnsiConsole.MarkupLine($"[red]✗[/] Installation failed: {ex.Message}");
                                 return false;
                             }
                         });
