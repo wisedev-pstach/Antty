@@ -8,6 +8,7 @@ Write-Host ""
 
 $tempDir = Join-Path $env:TEMP "antty-install-$(Get-Random)"
 $zipPath = Join-Path $env:TEMP "antty-$(Get-Random).zip"
+$installDir = Join-Path $env:LOCALAPPDATA "Antty"
 
 try {
     # Download repository as zip
@@ -72,15 +73,30 @@ try {
     Write-Host "Build successful!" -ForegroundColor Green
     Write-Host ""
     
+    # Copy to permanent location
+    Write-Host "Installing to $installDir..." -ForegroundColor Yellow
+    $tempPublish = Join-Path $projectRoot "publish"
+    
+    if (Test-Path $installDir) {
+        Remove-Item $installDir -Recurse -Force
+    }
+    
+    Copy-Item -Path $tempPublish -Destination $installDir -Recurse -Force
+    Write-Host "Files copied" -ForegroundColor Green
+    Write-Host ""
+    
     # Configure PATH
     Write-Host "Configuring PATH..." -ForegroundColor Yellow
-    $publishPath = Join-Path $projectRoot "publish"
     $currentPath = [Environment]::GetEnvironmentVariable('Path', 'User')
     
-    if ($currentPath -notlike "*$publishPath*") {
-        [Environment]::SetEnvironmentVariable('Path', "$currentPath;$publishPath", 'User')
-        Write-Host "Added to PATH: $publishPath" -ForegroundColor Green
-        $env:Path = "$env:Path;$publishPath"
+    # Remove old antty paths first
+    $pathParts = $currentPath -split ';' | Where-Object { $_ -notlike '*antty*' -or $_ -eq $installDir }
+    $cleanPath = ($pathParts -join ';')
+    
+    if ($cleanPath -notlike "*$installDir*") {
+        [Environment]::SetEnvironmentVariable('Path', "$installDir;$cleanPath", 'User')
+        Write-Host "Added to PATH: $installDir" -ForegroundColor Green
+        $env:Path = "$installDir;$env:Path"
     } else {
         Write-Host "PATH already configured" -ForegroundColor Green
     }
