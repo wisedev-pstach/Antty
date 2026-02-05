@@ -8,6 +8,76 @@ echo ""
 # Get the project root directory
 PROJECT_ROOT="$(pwd)"
 
+# Check if .NET SDK is installed
+echo "🔍 Checking for .NET SDK..."
+if command -v dotnet &> /dev/null; then
+    DOTNET_VERSION=$(dotnet --version)
+    echo "✓ Found .NET SDK version: $DOTNET_VERSION"
+else
+    echo "⚠ .NET SDK not found. Installing .NET 10..."
+    echo ""
+    
+    # Download and run the official .NET install script
+    INSTALL_SCRIPT="/tmp/dotnet-install.sh"
+    DOTNET_INSTALL_DIR="$HOME/.dotnet"
+    
+    echo "📥 Downloading .NET installer..."
+    curl -fsSL https://dot.net/v1/dotnet-install.sh -o "$INSTALL_SCRIPT"
+    
+    if [ $? -ne 0 ]; then
+        echo "❌ Failed to download .NET installer"
+        exit 1
+    fi
+    
+    chmod +x "$INSTALL_SCRIPT"
+    
+    echo "📦 Installing .NET 10 SDK (this may take a few minutes)..."
+    "$INSTALL_SCRIPT" --channel 10.0 --install-dir "$DOTNET_INSTALL_DIR"
+    
+    if [ $? -ne 0 ]; then
+        echo "❌ Failed to install .NET SDK"
+        echo "Please install .NET 10 manually from: https://dotnet.microsoft.com/download"
+        rm -f "$INSTALL_SCRIPT"
+        exit 1
+    fi
+    
+    # Add .NET to PATH for current session
+    export PATH="$DOTNET_INSTALL_DIR:$PATH"
+    
+    # Add .NET to shell profile for future sessions
+    PROFILE_FILE=""
+    if [ -f "$HOME/.bashrc" ]; then
+        PROFILE_FILE="$HOME/.bashrc"
+    elif [ -f "$HOME/.zshrc" ]; then
+        PROFILE_FILE="$HOME/.zshrc"
+    elif [ -f "$HOME/.profile" ]; then
+        PROFILE_FILE="$HOME/.profile"
+    fi
+    
+    if [ -n "$PROFILE_FILE" ]; then
+        if ! grep -q "export PATH=\"\$HOME/.dotnet:\$PATH\"" "$PROFILE_FILE"; then
+            echo "" >> "$PROFILE_FILE"
+            echo "# Added by Antty installer" >> "$PROFILE_FILE"
+            echo "export PATH=\"\$HOME/.dotnet:\$PATH\"" >> "$PROFILE_FILE"
+            echo "✓ Added .NET to PATH in $PROFILE_FILE"
+        fi
+    fi
+    
+    # Verify installation
+    DOTNET_VERSION=$("$DOTNET_INSTALL_DIR/dotnet" --version 2>/dev/null)
+    if [ $? -eq 0 ]; then
+        echo "✓ .NET SDK $DOTNET_VERSION installed successfully!"
+    else
+        echo "⚠ .NET installation completed but verification failed. You may need to restart your terminal."
+    fi
+    
+    # Clean up installer script
+    rm -f "$INSTALL_SCRIPT"
+    echo ""
+fi
+
+echo ""
+
 echo "📦 Publishing application..."
 
 # Build and publish the application (framework-dependent to avoid LlamaSharp conflicts)
