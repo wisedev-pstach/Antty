@@ -4,9 +4,10 @@
 echo "🗑️  Uninstalling Antty..."
 echo ""
 
-# Remove symlink
+INSTALL_DIR="$HOME/.local/share/antty"
 SYMLINK_PATH="/usr/local/bin/antty"
 
+# Remove symlink
 if [ -L "$SYMLINK_PATH" ]; then
     echo "🔧 Removing symlink..."
     if [ -w "/usr/local/bin" ]; then
@@ -26,15 +27,13 @@ else
     echo "✓ Symlink not found"
 fi
 
-# Remove published files
-PUBLISH_DIR="$(pwd)/publish"
-
-if [ -d "$PUBLISH_DIR" ]; then
-    echo "🗑️  Removing published files..."
-    rm -rf "$PUBLISH_DIR"
-    echo "✓ Published files removed"
+# Remove installation directory
+if [ -d "$INSTALL_DIR" ]; then
+    echo "🗑️  Removing installation files from $INSTALL_DIR..."
+    rm -rf "$INSTALL_DIR"
+    echo "✓ Installation files removed"
 else
-    echo "✓ No published files found"
+    echo "✓ Installation directory not found"
 fi
 
 echo ""
