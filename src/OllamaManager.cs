@@ -19,6 +19,17 @@ public static class OllamaManager
     /// </summary>
     public static bool IsOllamaInstalled()
     {
+        // Check local installation directory first (for fresh installs where PATH might not be updated)
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            var localOllama = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Ollama", "ollama.exe");
+            if (File.Exists(localOllama))
+            {
+                return true;
+            }
+        }
+        
+        // Fallback: check via PATH
         try
         {
             var startInfo = new ProcessStartInfo
@@ -519,20 +530,30 @@ public static class OllamaManager
                             var zipBytes = await client.GetByteArrayAsync(zipUrl);
                             await File.WriteAllBytesAsync(zipPath, zipBytes);
                             
-                            ctx.Status("[cyan]Extracting Ollama...[/]");
-                            
-                            // Extract ollama.exe from zip
-                            try 
+                            // Skip extraction if already exists (avoid file-in-use errors)
+                            if (!File.Exists(ollamaExePath))
                             {
-                                System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, ollamaDir, true);
+                                ctx.Status("[cyan]Extracting Ollama...[/]");
+                                
+                                // Extract ollama.exe from zip
+                                try 
+                                {
+                                    System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, ollamaDir, true);
+                                }
+                                finally
+                                {
+                                    // Cleanup zip
+                                    if (File.Exists(zipPath)) File.Delete(zipPath);
+                                }
                             }
-                            finally
+                            else
                             {
-                                // Cleanup zip
+                                ctx.Status("[cyan]Ollama already installed, skipping extraction...[/]");
+                                // Still cleanup zip
                                 if (File.Exists(zipPath)) File.Delete(zipPath);
                             }
                             
-                            // Verify extraction
+                            // Verify installation
                             if (!File.Exists(ollamaExePath))
                             {
                                 throw new FileNotFoundException("ollama.exe not found in downloaded package");
