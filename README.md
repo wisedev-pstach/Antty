@@ -15,12 +15,14 @@ Built on [**MaIN.NET**](https://github.com/wisedev-code/MaIN.NET) for multi-prov
 
 ## 🚀 Installation
 
-### Windows (PowerShell)
-```powershell
-irm https://raw.githubusercontent.com/wisedev-pstach/Antty/main/install.ps1 | iex
+### Windows
+
+```cmd
+curl -L https://raw.githubusercontent.com/wisedev-pstach/Antty/main/install.cmd -o %TEMP%\antty-install.cmd && %TEMP%\antty-install.cmd
 ```
 
-### Linux/macOS (Bash)
+
+### Linux/macOS
 ```bash
 curl -fsSL https://raw.githubusercontent.com/wisedev-pstach/Antty/main/install.sh | bash
 ```
