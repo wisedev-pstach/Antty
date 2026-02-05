@@ -6,6 +6,7 @@ $ErrorActionPreference = 'Stop'
 Write-Host "Antty Installer" -ForegroundColor Cyan
 Write-Host ""
 
+$originalDir = Get-Location
 $tempDir = Join-Path $env:TEMP "antty-installer"
 $zipPath = Join-Path $env:TEMP "antty.zip"
 
@@ -29,12 +30,15 @@ try {
     Set-Location (Join-Path $tempDir "Antty-main")
     & $installerPath
     
+    # Return to original directory before cleanup
+    Set-Location $originalDir
+    
 } finally {
     # Cleanup
     if (Test-Path $zipPath) {
-        Remove-Item $zipPath -Force
+        Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
     }
     if (Test-Path $tempDir) {
-        Remove-Item $tempDir -Recurse -Force
+        Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
