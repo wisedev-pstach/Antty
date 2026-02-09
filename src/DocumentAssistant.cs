@@ -180,7 +180,6 @@ public class DocumentAssistant
                 // Tool callbacks handled internally
                 return Task.CompletedTask;
             }
-            // cancellationToken removed for now to fix build
         );
 
         _ = processTask.ContinueWith(t => 
