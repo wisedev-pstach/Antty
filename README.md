@@ -28,6 +28,8 @@ curl -fsSL https://raw.githubusercontent.com/wisedev-pstach/Antty/main/bootstrap
 ```
 
 > **Note:** After installation, restart your terminal, then run `antty` from anywhere.
+> 
+> On Windows, if Ollama is not installed, it will be automatically installed via [Scoop](https://scoop.sh) package manager on first run.
 
 ## 📖 Usage
 

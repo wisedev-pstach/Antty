@@ -22,6 +22,21 @@ public static class OllamaManager
         // Check local installation directory first (for fresh installs where PATH might not be updated)
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
+            // Check Scoop user install location
+            var scoopUserOllama = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "scoop", "apps", "ollama", "current", "ollama.exe");
+            if (File.Exists(scoopUserOllama))
+            {
+                return true;
+            }
+            
+            // Check Scoop global install location
+            var scoopGlobalOllama = @"C:\ProgramData\scoop\apps\ollama\current\ollama.exe";
+            if (File.Exists(scoopGlobalOllama))
+            {
+                return true;
+            }
+            
+            // Check legacy manual install location (for backwards compatibility)
             var localOllama = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Ollama", "ollama.exe");
             if (File.Exists(localOllama))
             {
@@ -88,10 +103,29 @@ public static class OllamaManager
             var fileName = "ollama";
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                var localOllama = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Ollama", "ollama.exe");
-                if (File.Exists(localOllama))
+                // Check Scoop user install location
+                var scoopUserOllama = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "scoop", "apps", "ollama", "current", "ollama.exe");
+                if (File.Exists(scoopUserOllama))
                 {
-                    fileName = localOllama;
+                    fileName = scoopUserOllama;
+                }
+                else
+                {
+                    // Check Scoop global install location
+                    var scoopGlobalOllama = @"C:\ProgramData\scoop\apps\ollama\current\ollama.exe";
+                    if (File.Exists(scoopGlobalOllama))
+                    {
+                        fileName = scoopGlobalOllama;
+                    }
+                    else
+                    {
+                        // Check legacy manual install location (for backwards compatibility)
+                        var localOllama = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Ollama", "ollama.exe");
+                        if (File.Exists(localOllama))
+                        {
+                            fileName = localOllama;
+                        }
+                    }
                 }
             }
 
@@ -122,7 +156,8 @@ public static class OllamaManager
                     while (!_ollamaProcess.HasExited)
                     {
                         var line = await _ollamaProcess.StandardError.ReadLineAsync();
-                        if (line != null && line.Contains("error", StringComparison.OrdinalIgnoreCase))
+                        // Only show actual ERROR level messages, not INFO/WARN logs that happen to contain "error" in fields
+                        if (line != null && line.Contains("level=ERROR", StringComparison.OrdinalIgnoreCase))
                         {
                             AnsiConsole.MarkupLine($"[red]Ollama error:[/] [dim]{line.EscapeMarkup()}[/]");
                         }
@@ -381,12 +416,15 @@ public static class OllamaManager
         {
             return """
             To install Ollama on Windows:
-            1. Visit: https://ollama.com/download
-            2. Download the Windows installer
-            3. Run the installer and follow the prompts
             
-            Or use winget:
-            winget install Ollama.Ollama
+            Recommended (via Scoop):
+            1. Install Scoop if needed: https://scoop.sh
+               PowerShell: irm get.scoop.sh | iex
+            2. Install Ollama: scoop install ollama
+            
+            Alternative methods:
+            - Visit: https://ollama.com/download
+            - Or use winget: winget install Ollama.Ollama
             """;
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
@@ -504,82 +542,178 @@ public static class OllamaManager
             }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                // Install Ollama from GitHub releases (zip) - silent and reliable
+                // Install Ollama via Scoop package manager
                 return await AnsiConsole.Status()
                     .Spinner(Spinner.Known.Dots)
                     .SpinnerStyle(Style.Parse("cyan bold"))
-                    .StartAsync("[cyan]Downloading Ollama...[/]", async ctx =>
+                    .StartAsync("[cyan]Checking for Scoop...[/]", async ctx =>
                     {
                         try
                         {
-                            // Create Ollama directory in user's AppData
-                            var ollamaDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Ollama");
-                            Directory.CreateDirectory(ollamaDir);
-                            
-                            var ollamaExePath = Path.Combine(ollamaDir, "ollama.exe");
-                            
-                            // Download Ollama zip from GitHub releases
-                            ctx.Status("[cyan]Downloading Ollama release...[/]");
-                            using var client = new HttpClient();
-                            client.Timeout = TimeSpan.FromMinutes(10);
-                            
-                            // Direct link to latest Windows release zip
-                            var zipUrl = "https://github.com/ollama/ollama/releases/latest/download/ollama-windows-amd64.zip";
-                            var zipPath = Path.Combine(Path.GetTempPath(), "ollama.zip");
-                            
-                            var zipBytes = await client.GetByteArrayAsync(zipUrl);
-                            await File.WriteAllBytesAsync(zipPath, zipBytes);
-                            
-                            // Skip extraction if already exists (avoid file-in-use errors)
-                            if (!File.Exists(ollamaExePath))
+                            // Check if Scoop is installed
+                            bool scoopInstalled = false;
+                            try
                             {
-                                ctx.Status("[cyan]Extracting Ollama...[/]");
-                                
-                                // Extract ollama.exe from zip
-                                try 
+                                var scoopCheckInfo = new ProcessStartInfo
                                 {
-                                    System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, ollamaDir, true);
+                                    FileName = "scoop",
+                                    Arguments = "--version",
+                                    RedirectStandardOutput = true,
+                                    RedirectStandardError = true,
+                                    UseShellExecute = false,
+                                    CreateNoWindow = true
+                                };
+
+                                using var scoopCheck = Process.Start(scoopCheckInfo);
+                                if (scoopCheck != null)
+                                {
+                                    await scoopCheck.WaitForExitAsync();
+                                    scoopInstalled = scoopCheck.ExitCode == 0;
                                 }
-                                finally
+                            }
+                            catch
+                            {
+                                scoopInstalled = false;
+                            }
+
+                            // Install Scoop if not present
+                            if (!scoopInstalled)
+                            {
+                                ctx.Status("[cyan]Scoop not found. Installing Scoop...[/]");
+                                AnsiConsole.WriteLine();
+                                AnsiConsole.MarkupLine("[yellow]⚠[/] Scoop will be installed to manage Ollama");
+                                AnsiConsole.MarkupLine("[dim]   Scoop is a Windows package manager: https://scoop.sh[/]");
+                                AnsiConsole.WriteLine();
+
+                                // Install Scoop using the official installation command
+                                var installScoopInfo = new ProcessStartInfo
                                 {
-                                    // Cleanup zip
-                                    if (File.Exists(zipPath)) File.Delete(zipPath);
+                                    FileName = "powershell.exe",
+                                    Arguments = "-ExecutionPolicy RemoteSigned -Command \"Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force; Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression\"",
+                                    RedirectStandardOutput = true,
+                                    RedirectStandardError = true,
+                                    UseShellExecute = false,
+                                    CreateNoWindow = true
+                                };
+
+                                using var installScoop = Process.Start(installScoopInfo);
+                                if (installScoop == null)
+                                {
+                                    AnsiConsole.MarkupLine("[red]✗[/] Failed to start Scoop installation");
+                                    return false;
+                                }
+
+                                // Show output
+                                var outputTask = Task.Run(async () =>
+                                {
+                                    while (!installScoop.HasExited)
+                                    {
+                                        var line = await installScoop.StandardOutput.ReadLineAsync();
+                                        if (!string.IsNullOrWhiteSpace(line))
+                                        {
+                                            AnsiConsole.MarkupLine($"[dim]{line.EscapeMarkup()}[/]");
+                                        }
+                                    }
+                                });
+
+                                await installScoop.WaitForExitAsync();
+
+                                try { await outputTask; } catch { }
+
+                                if (installScoop.ExitCode != 0)
+                                {
+                                    var error = await installScoop.StandardError.ReadToEndAsync();
+                                    AnsiConsole.MarkupLine("[red]✗[/] Scoop installation failed");
+                                    if (!string.IsNullOrEmpty(error))
+                                    {
+                                        AnsiConsole.MarkupLine($"[dim]{error.Split('\n')[0].EscapeMarkup()}[/]");
+                                    }
+                                    return false;
+                                }
+
+                                AnsiConsole.MarkupLine("[green]✓[/] Scoop installed successfully");
+                                await Task.Delay(1000);
+                                
+                                // Refresh PATH for current process to include Scoop
+                                var scoopPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "scoop", "shims");
+                                var currentProcessPath = Environment.GetEnvironmentVariable("Path") ?? "";
+                                if (!currentProcessPath.Contains(scoopPath))
+                                {
+                                    Environment.SetEnvironmentVariable("Path", $"{scoopPath};{currentProcessPath}");
                                 }
                             }
                             else
                             {
-                                ctx.Status("[cyan]Ollama already installed, skipping extraction...[/]");
-                                // Still cleanup zip
-                                if (File.Exists(zipPath)) File.Delete(zipPath);
-                            }
-                            
-                            // Verify installation
-                            if (!File.Exists(ollamaExePath))
-                            {
-                                throw new FileNotFoundException("ollama.exe not found in downloaded package");
-                            }
-                                
-                                // Add to PATH
-                                var userPath = Environment.GetEnvironmentVariable("Path", EnvironmentVariableTarget.User) ?? "";
-                                if (!userPath.Contains(ollamaDir))
-                                {
-                                    var newPath = string.IsNullOrEmpty(userPath) ? ollamaDir : $"{ollamaDir};{userPath}";
-                                    Environment.SetEnvironmentVariable("Path", newPath, EnvironmentVariableTarget.User);
-                                    
-                                    // Also update current process PATH
-                                    Environment.SetEnvironmentVariable("Path", $"{ollamaDir};{Environment.GetEnvironmentVariable("Path")}");
-                                }
-                                
-                                ctx.Status("[green]✓ Ollama installed successfully[/]");
+                                ctx.Status("[green]✓ Scoop is installed[/]");
                                 await Task.Delay(500);
-                                return true;
                             }
-                            catch (Exception ex)
+
+                            // Now install Ollama via Scoop
+                            ctx.Status("[cyan]Installing Ollama via Scoop...[/]");
+                            AnsiConsole.WriteLine();
+
+                            // Use full path to scoop to ensure it's found
+                            var scoopExecutable = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "scoop", "shims", "scoop.cmd");
+                            if (!File.Exists(scoopExecutable))
                             {
-                                AnsiConsole.MarkupLine($"[red]✗[/] Installation failed: {ex.Message}");
+                                scoopExecutable = "scoop"; // Fallback to PATH
+                            }
+
+                            var installOllamaInfo = new ProcessStartInfo
+                            {
+                                FileName = scoopExecutable,
+                                Arguments = "install ollama",
+                                RedirectStandardOutput = true,
+                                RedirectStandardError = true,
+                                UseShellExecute = false,
+                                CreateNoWindow = true
+                            };
+
+                            using var installOllama = Process.Start(installOllamaInfo);
+                            if (installOllama == null)
+                            {
+                                AnsiConsole.MarkupLine("[red]✗[/] Failed to start Ollama installation");
                                 return false;
                             }
-                        });
+
+                            // Show installation output
+                            var ollamaOutputTask = Task.Run(async () =>
+                            {
+                                while (!installOllama.HasExited)
+                                {
+                                    var line = await installOllama.StandardOutput.ReadLineAsync();
+                                    if (!string.IsNullOrWhiteSpace(line))
+                                    {
+                                        AnsiConsole.MarkupLine($"[dim]{line.EscapeMarkup()}[/]");
+                                    }
+                                }
+                            });
+
+                            await installOllama.WaitForExitAsync();
+
+                            try { await ollamaOutputTask; } catch { }
+
+                            if (installOllama.ExitCode != 0)
+                            {
+                                var error = await installOllama.StandardError.ReadToEndAsync();
+                                AnsiConsole.MarkupLine("[red]✗[/] Ollama installation failed");
+                                if (!string.IsNullOrEmpty(error))
+                                {
+                                    AnsiConsole.MarkupLine($"[dim]{error.Split('\n')[0].EscapeMarkup()}[/]");
+                                }
+                                return false;
+                            }
+
+                            ctx.Status("[green]✓ Ollama installed successfully[/]");
+                            await Task.Delay(500);
+                            return true;
+                        }
+                        catch (Exception ex)
+                        {
+                            AnsiConsole.MarkupLine($"[red]✗[/] Installation failed: {ex.Message.EscapeMarkup()}");
+                            return false;
+                        }
+                    });
             }
         }
         catch (Exception ex)
