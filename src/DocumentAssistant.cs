@@ -37,7 +37,7 @@ public class DocumentAssistant
     private static List<(string filePath, string kbPath)>? _documents;
     private static IAgentContextExecutor? _assistantAgent;
     private static List<Message> _conversationHistory = new();
-    
+
     /// <summary>
     /// Callback for tool execution logs (e.g. "Searching for...")
     /// </summary>
@@ -54,13 +54,16 @@ public class DocumentAssistant
     /// </summary>
     public static async Task Initialize(AppConfig config, MultiBookSearchEngine searchEngine, List<(string filePath, string kbPath)> documents, BackendType backendType, string modelName)
     {
+        AnsiConsole.MarkupLine($"[dim]DocumentAssistant: Initializing with backend={backendType}, model={modelName.EscapeMarkup()}[/]");
+
         _searchEngine = searchEngine;
         _documents = documents;
-        _conversationHistory.Clear(); 
+        _conversationHistory.Clear();
         AIHub.Extensions.DisableNotificationsLogs();
 
         // Extract document names for system prompt
         var documentNames = documents.Select(d => Path.GetFileNameWithoutExtension(d.filePath)).ToList();
+        AnsiConsole.MarkupLine($"[dim]DocumentAssistant: Loaded {documentNames.Count} documents[/]");
 
         // Set backend-specific environment variables for keys
         switch (backendType)
@@ -84,6 +87,8 @@ public class DocumentAssistant
                 Environment.SetEnvironmentVariable("XAI_API_KEY", config.XaiKey);
                 break;
         }
+
+        AnsiConsole.MarkupLine("[dim]DocumentAssistant: Creating AI agent...[/]");
 
         // Initialize unified agent
         _assistantAgent = await AIHub.Agent()
@@ -145,6 +150,8 @@ public class DocumentAssistant
             .WithSteps(
                 StepBuilder.Instance.Answer().Build())
             .CreateAsync();
+
+        AnsiConsole.MarkupLine("[green]✓[/] [dim]DocumentAssistant: AI agent created successfully[/]");
     }
 
     /// <summary>
@@ -154,6 +161,8 @@ public class DocumentAssistant
     {
         if (_assistantAgent == null)
             throw new InvalidOperationException("Assistant not initialized. Call Initialize() first.");
+
+        AnsiConsole.MarkupLine($"[dim]DocumentAssistant: Received user message ({userMessage.Length} chars)[/]");
 
         // Add user message to conversation history
         var userMsg = new MaIN.Domain.Entities.Message
@@ -167,6 +176,8 @@ public class DocumentAssistant
 
         var channel = System.Threading.Channels.Channel.CreateUnbounded<string>();
         var assistantResponse = new System.Text.StringBuilder();
+
+        AnsiConsole.MarkupLine($"[dim]DocumentAssistant: Starting AI ProcessAsync with {_conversationHistory.Count} messages in history...[/]");
 
         var processTask = _assistantAgent.ProcessAsync(
             _conversationHistory, // Use full conversation history
@@ -182,21 +193,35 @@ public class DocumentAssistant
             }
         );
 
-        _ = processTask.ContinueWith(t => 
+        _ = processTask.ContinueWith(t =>
         {
             if (t.IsFaulted)
-                channel.Writer.Complete(t.Exception?.InnerException ?? t.Exception);
+            {
+                var ex = t.Exception?.InnerException ?? t.Exception;
+                AnsiConsole.MarkupLine($"[red]DocumentAssistant ERROR:[/] ProcessAsync faulted: {ex?.GetType().Name} - {ex?.Message.EscapeMarkup()}[/]");
+                channel.Writer.Complete(ex);
+            }
             else if (t.IsCanceled)
+            {
+                AnsiConsole.MarkupLine("[yellow]DocumentAssistant: ProcessAsync was canceled[/]");
                 channel.Writer.Complete(new OperationCanceledException());
+            }
             else
+            {
+                AnsiConsole.MarkupLine("[dim]DocumentAssistant: ProcessAsync completed successfully[/]");
                 channel.Writer.Complete();
+            }
         });
 
+        var tokenCount = 0;
         await foreach (var text in channel.Reader.ReadAllAsync())
         {
             assistantResponse.Append(text);
+            tokenCount++;
             yield return text;
         }
+
+        AnsiConsole.MarkupLine($"[dim]DocumentAssistant: Received {tokenCount} tokens, total response length: {assistantResponse.Length} chars[/]");
 
         // Add assistant response to conversation history
         if (assistantResponse.Length > 0)
@@ -232,7 +257,7 @@ public class DocumentAssistant
             if (topResults.Count == 0)
             {
                 LogTool("   No results, trying with keywords only...");
-                
+
                 // Extract keywords (words longer than 3 chars, excluding common words)
                 var commonWords = new HashSet<string> { "the", "and", "for", "with", "that", "this", "from", "what", "how", "why", "when", "where", "which", "about" };
                 var keywords = args.query.ToLower()
@@ -250,7 +275,7 @@ public class DocumentAssistant
                     if (topResults.Count == 0 && keywords.Count > 1)
                     {
                         LogTool("   Still no results, trying individual keywords...");
-                        
+
                         // Try 2: Most important keyword alone
                         var mainKeyword = keywords.OrderByDescending(k => k.Length).First();
                         results = await _searchEngine.SearchAllAsync(mainKeyword, silent: true);
@@ -315,9 +340,9 @@ public class DocumentAssistant
         {
             // Load the knowledge base
             var json = await File.ReadAllTextAsync(doc.kbPath);
-            
+
             List<RawChunk> chunks;
-            
+
             // Try new format first (KnowledgeBase with Metadata)
             try
             {
