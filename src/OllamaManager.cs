@@ -15,21 +15,19 @@ public static class OllamaManager
     private static Process? _ollamaProcess;
 
     /// <summary>
-    /// Get the full path to the Ollama executable
+    /// Get the full path to the Ollama executable, or just "ollama" to use from PATH
     /// </summary>
     private static string GetOllamaExecutablePath()
     {
-        // Try to use PATH first - works for most installations (official installer, winget, chocolatey, etc.)
-        // and respects user's environment configuration
-        var pathOllama = FindInPath("ollama.exe");
-        if (pathOllama != null)
-        {
-            return pathOllama;
-        }
+        // Default: just use "ollama" command - works if it's in PATH (most installations)
+        // This respects user's environment and is the simplest approach
+        string defaultCommand = "ollama";
 
+        // Quick check: if "ollama" is accessible in PATH, use it
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            // Check common Windows installation locations
+            // Only check specific paths if needed (for edge cases where PATH isn't set)
+            // This happens with some fresh Scoop installs before PATH refresh
             string[] commonPaths = {
                 // Official Ollama installer - user install (most common)
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Ollama", "ollama.exe"),
@@ -47,6 +45,7 @@ public static class OllamaManager
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Ollama", "ollama.exe")
             };
 
+            // Only use specific path if we can verify it exists
             foreach (var path in commonPaths)
             {
                 if (File.Exists(path))
@@ -56,36 +55,8 @@ public static class OllamaManager
             }
         }
 
-        // Final fallback: just "ollama" and hope it's in PATH
-        return "ollama";
-    }
-
-    /// <summary>
-    /// Find executable in system PATH
-    /// </summary>
-    private static string? FindInPath(string filename)
-    {
-        var path = Environment.GetEnvironmentVariable("PATH");
-        if (string.IsNullOrEmpty(path)) return null;
-
-        var paths = path.Split(Path.PathSeparator);
-        foreach (var dir in paths)
-        {
-            try
-            {
-                var fullPath = Path.Combine(dir, filename);
-                if (File.Exists(fullPath))
-                {
-                    return fullPath;
-                }
-            }
-            catch
-            {
-                // Ignore invalid path entries
-            }
-        }
-
-        return null;
+        // Default: just return "ollama" and let OS handle path resolution
+        return defaultCommand;
     }
 
     /// <summary>
