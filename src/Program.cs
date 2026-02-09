@@ -449,14 +449,14 @@ partial class Program
                         var clean = System.Text.RegularExpressions.Regex.Replace(log, @"\[.*?\]", "");
                         clean = clean.Trim();
 
-                        // Using a dark grey and dimming to make it feel 'smaller' and less intrusive
-                        table.AddRow(new Text(clean, new Style(foreground: Color.Grey37, decoration: Decoration.Dim)));
+                        // Using green to indicate tool activity/progress
+                        table.AddRow(new Text(clean, new Style(foreground: Color.Green, decoration: Decoration.None)));
                     }
 
                     var panel = new Panel(table)
                     {
                         Border = BoxBorder.Rounded,
-                        BorderStyle = new Style(foreground: Color.Yellow, decoration: Decoration.Dim),
+                        BorderStyle = new Style(foreground: Color.Green),
                         Padding = new Padding(1, 0),
                         Expand = false
                     };
