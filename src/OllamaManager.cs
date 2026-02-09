@@ -19,32 +19,73 @@ public static class OllamaManager
     /// </summary>
     private static string GetOllamaExecutablePath()
     {
+        // Try to use PATH first - works for most installations (official installer, winget, chocolatey, etc.)
+        // and respects user's environment configuration
+        var pathOllama = FindInPath("ollama.exe");
+        if (pathOllama != null)
+        {
+            return pathOllama;
+        }
+
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            // Check Scoop user install location
-            var scoopUserOllama = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "scoop", "apps", "ollama", "current", "ollama.exe");
-            if (File.Exists(scoopUserOllama))
-            {
-                return scoopUserOllama;
-            }
+            // Check common Windows installation locations
+            string[] commonPaths = {
+                // Official Ollama installer - user install (most common)
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Ollama", "ollama.exe"),
+                
+                // Official Ollama installer - system-wide install
+                @"C:\Program Files\Ollama\ollama.exe",
+                
+                // Scoop user install
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "scoop", "apps", "ollama", "current", "ollama.exe"),
+                
+                // Scoop global install
+                @"C:\ProgramData\scoop\apps\ollama\current\ollama.exe",
+                
+                // Winget might install here
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Ollama", "ollama.exe")
+            };
 
-            // Check Scoop global install location
-            var scoopGlobalOllama = @"C:\ProgramData\scoop\apps\ollama\current\ollama.exe";
-            if (File.Exists(scoopGlobalOllama))
+            foreach (var path in commonPaths)
             {
-                return scoopGlobalOllama;
-            }
-
-            // Check legacy manual install location (for backwards compatibility)
-            var localOllama = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Ollama", "ollama.exe");
-            if (File.Exists(localOllama))
-            {
-                return localOllama;
+                if (File.Exists(path))
+                {
+                    return path;
+                }
             }
         }
 
-        // Fallback to just "ollama" and let PATH resolution handle it
+        // Final fallback: just "ollama" and hope it's in PATH
         return "ollama";
+    }
+
+    /// <summary>
+    /// Find executable in system PATH
+    /// </summary>
+    private static string? FindInPath(string filename)
+    {
+        var path = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrEmpty(path)) return null;
+
+        var paths = path.Split(Path.PathSeparator);
+        foreach (var dir in paths)
+        {
+            try
+            {
+                var fullPath = Path.Combine(dir, filename);
+                if (File.Exists(fullPath))
+                {
+                    return fullPath;
+                }
+            }
+            catch
+            {
+                // Ignore invalid path entries
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -52,37 +93,20 @@ public static class OllamaManager
     /// </summary>
     public static bool IsOllamaInstalled()
     {
-        // Check local installation directory first (for fresh installs where PATH might not be updated)
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            // Check Scoop user install location
-            var scoopUserOllama = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "scoop", "apps", "ollama", "current", "ollama.exe");
-            if (File.Exists(scoopUserOllama))
-            {
-                return true;
-            }
-            
-            // Check Scoop global install location
-            var scoopGlobalOllama = @"C:\ProgramData\scoop\apps\ollama\current\ollama.exe";
-            if (File.Exists(scoopGlobalOllama))
-            {
-                return true;
-            }
-            
-            // Check legacy manual install location (for backwards compatibility)
-            var localOllama = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Ollama", "ollama.exe");
-            if (File.Exists(localOllama))
-            {
-                return true;
-            }
-        }
-        
-        // Fallback: check via PATH
         try
         {
+            var ollamaPath = GetOllamaExecutablePath();
+            
+            // If we found a specific path (not just "ollama"), check if it exists
+            if (ollamaPath != "ollama" && !File.Exists(ollamaPath))
+            {
+                return false;
+            }
+
+            // Try to run ollama --version to verify it works
             var startInfo = new ProcessStartInfo
             {
-                FileName = GetOllamaExecutablePath(),
+                FileName = ollamaPath,
                 Arguments = "--version",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
