@@ -608,76 +608,7 @@ partial class Program
         await Task.CompletedTask;
     }
 
-    static async Task<string> DownloadNomicModelAsync()
-    {
-        var modelsDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Antty",
-            "models"
-        );
 
-        if (!Directory.Exists(modelsDir))
-            Directory.CreateDirectory(modelsDir);
-
-        var modelPath = Path.Combine(modelsDir, "nomicv2.gguf");
-
-        if (!File.Exists(modelPath))
-        {
-            AnsiConsole.MarkupLine("[yellow]⬇ Downloading Nomic embedding model (first time only)...[/]");
-            AnsiConsole.MarkupLine("[dim]From: https://huggingface.co/Inza124/Nomic[/]");
-            AnsiConsole.WriteLine();
-
-            await AnsiConsole.Progress()
-                .Columns(
-                    new TaskDescriptionColumn(),
-                    new ProgressBarColumn(),
-                    new PercentageColumn(),
-                    new RemainingTimeColumn(),
-                    new SpinnerColumn()
-                )
-                .StartAsync(async ctx =>
-                {
-                    var downloadTask = ctx.AddTask("[cyan]Downloading nomicv2.gguf[/]");
-
-                    using var httpClient = new HttpClient();
-                    httpClient.Timeout = TimeSpan.FromMinutes(10);
-
-                    var url = "https://huggingface.co/Inza124/Nomic/resolve/main/nomicv2.gguf";
-
-                    using var response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
-                    response.EnsureSuccessStatusCode();
-
-                    var totalBytes = response.Content.Headers.ContentLength ?? 0;
-                    downloadTask.MaxValue = totalBytes;
-
-                    using var contentStream = await response.Content.ReadAsStreamAsync();
-                    using var fileStream = new FileStream(modelPath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true);
-
-                    var buffer = new byte[8192];
-                    long totalRead = 0;
-                    int bytesRead;
-
-                    while ((bytesRead = await contentStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
-                    {
-                        await fileStream.WriteAsync(buffer, 0, bytesRead);
-                        totalRead += bytesRead;
-                        downloadTask.Value = totalRead;
-                    }
-                });
-
-            var fileSizeMB = new FileInfo(modelPath).Length / (1024.0 * 1024.0);
-            AnsiConsole.MarkupLine($"[green]✓[/] Model downloaded: [cyan]{fileSizeMB:F1} MB[/]");
-            AnsiConsole.WriteLine();
-        }
-        else
-        {
-            var fileSizeMB = new FileInfo(modelPath).Length / (1024.0 * 1024.0);
-            AnsiConsole.MarkupLine($"[green]✓[/] Using cached Nomic model ([cyan]{fileSizeMB:F1} MB[/])");
-            AnsiConsole.WriteLine();
-        }
-
-        return modelPath;
-    }
 
     static async Task DownloadLocalModelAsync(string modelName)
     {
@@ -745,7 +676,7 @@ partial class Program
                 .Title("[cyan]Choose Operating Mode:[/]")
                 .PageSize(10)
                 .AddChoices(new[] {
-                    "💻 Local (Offline) - Ollama + Local Embeddings",
+                    "💻 Local (Offline) - Ollama + Ollama Embeddings",
                     "☁️  Cloud (Online) - Cloud Models + OpenAI Embeddings"
                 }));
 
@@ -757,12 +688,9 @@ partial class Program
         {
             // --- LOCAL MODE ---
             AnsiConsole.MarkupLine("[dim]Configuring for fully offline use...[/]");
-            config.EmbeddingProvider = "local";
+            config.EmbeddingProvider = "ollama";
 
-            // 1. Setup Local Embeddings
-            config.LocalModelPath = await DownloadNomicModelAsync();
-
-            // 2. Setup Local Chat (Ollama)
+            // 1. Ensure Ollama is ready
             backendType = BackendType.Ollama;
             if (!await OllamaManager.EnsureOllamaReadyAsync())
             {
@@ -770,6 +698,29 @@ partial class Program
                 return (null, backendType, "");
             }
 
+            // 2. Setup Ollama Embeddings (nomic-embed-text)
+            const string embeddingModel = "nomic-embed-text";
+            if (!await OllamaManager.IsModelInstalledAsync(embeddingModel))
+            {
+                AnsiConsole.MarkupLine($"[yellow]Embedding model {embeddingModel} not found.[/]");
+                if (AnsiConsole.Confirm($"Download {embeddingModel}?", true))
+                {
+                    if (!await OllamaManager.PullModelAsync(embeddingModel))
+                    {
+                        AnsiConsole.MarkupLine("[red]Failed to download embedding model.[/]");
+                        return (null, backendType, "");
+                    }
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("[red]Embedding model required for local mode.[/]");
+                    return (null, backendType, "");
+                }
+            }
+            AnsiConsole.MarkupLine($"[green]✓[/] Using Ollama embeddings: [cyan]{embeddingModel}[/]");
+            AnsiConsole.WriteLine();
+
+            // 3. Setup Local Chat Model
             modelName = await ConfigureOllamaModelAsync(config);
             if (string.IsNullOrEmpty(modelName)) return (null, backendType, "");
         }
@@ -886,7 +837,7 @@ partial class Program
 
         // Create embedding provider
         var embeddingProvider = isLocalMode
-            ? (Antty.Embedding.IEmbeddingProvider)new Antty.Embedding.LocalEmbeddingProvider(config.LocalModelPath)
+            ? (Antty.Embedding.IEmbeddingProvider)new Antty.Embedding.OllamaEmbeddingProvider("nomic-embed-text")
             : new Antty.Embedding.OpenAIEmbeddingProvider(config.ApiKey);
 
         return (embeddingProvider, backendType, modelName);

@@ -15,6 +15,39 @@ public static class OllamaManager
     private static Process? _ollamaProcess;
 
     /// <summary>
+    /// Get the full path to the Ollama executable
+    /// </summary>
+    private static string GetOllamaExecutablePath()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            // Check Scoop user install location
+            var scoopUserOllama = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "scoop", "apps", "ollama", "current", "ollama.exe");
+            if (File.Exists(scoopUserOllama))
+            {
+                return scoopUserOllama;
+            }
+
+            // Check Scoop global install location
+            var scoopGlobalOllama = @"C:\ProgramData\scoop\apps\ollama\current\ollama.exe";
+            if (File.Exists(scoopGlobalOllama))
+            {
+                return scoopGlobalOllama;
+            }
+
+            // Check legacy manual install location (for backwards compatibility)
+            var localOllama = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Ollama", "ollama.exe");
+            if (File.Exists(localOllama))
+            {
+                return localOllama;
+            }
+        }
+
+        // Fallback to just "ollama" and let PATH resolution handle it
+        return "ollama";
+    }
+
+    /// <summary>
     /// Check if Ollama is installed on the system
     /// </summary>
     public static bool IsOllamaInstalled()
@@ -49,7 +82,7 @@ public static class OllamaManager
         {
             var startInfo = new ProcessStartInfo
             {
-                FileName = "ollama",
+                FileName = GetOllamaExecutablePath(),
                 Arguments = "--version",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -99,35 +132,8 @@ public static class OllamaManager
                 return true;
             }
 
-            // Determine executable path - check local install first for fresh installs
-            var fileName = "ollama";
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                // Check Scoop user install location
-                var scoopUserOllama = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "scoop", "apps", "ollama", "current", "ollama.exe");
-                if (File.Exists(scoopUserOllama))
-                {
-                    fileName = scoopUserOllama;
-                }
-                else
-                {
-                    // Check Scoop global install location
-                    var scoopGlobalOllama = @"C:\ProgramData\scoop\apps\ollama\current\ollama.exe";
-                    if (File.Exists(scoopGlobalOllama))
-                    {
-                        fileName = scoopGlobalOllama;
-                    }
-                    else
-                    {
-                        // Check legacy manual install location (for backwards compatibility)
-                        var localOllama = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Ollama", "ollama.exe");
-                        if (File.Exists(localOllama))
-                        {
-                            fileName = localOllama;
-                        }
-                    }
-                }
-            }
+            // Use the shared helper to get Ollama executable path
+            var fileName = GetOllamaExecutablePath();
 
             var startInfo = new ProcessStartInfo
             {
@@ -205,7 +211,7 @@ public static class OllamaManager
         {
             var startInfo = new ProcessStartInfo
             {
-                FileName = "ollama",
+                FileName = GetOllamaExecutablePath(),
                 Arguments = "list",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -261,7 +267,7 @@ public static class OllamaManager
 
             var startInfo = new ProcessStartInfo
             {
-                FileName = "ollama",
+                FileName = GetOllamaExecutablePath(),
                 Arguments = $"pull {modelName}",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -358,7 +364,7 @@ public static class OllamaManager
         {
             var startInfo = new ProcessStartInfo
             {
-                FileName = "ollama",
+                FileName = GetOllamaExecutablePath(),
                 Arguments = "list",
                 RedirectStandardOutput = true,
                 UseShellExecute = false,
