@@ -85,7 +85,7 @@ partial class Program
                 .Title("[cyan]Select documents to load:[/]")
                 .PageSize(15)
                 .Required()
-                .InstructionsText("[grey](Press [blue]<space>[/] to toggle, [green]<enter>[/] to confirm | [green]✓[/] = already indexed)[/]")
+                .InstructionsText("[grey](Press [blue]<space>[/] to toggle, [green]<enter>[/] to confirm, [yellow]ESC[/] to exit | [green]✓[/] = already indexed)[/]")
                 .AddChoices(fileChoices.Select(f => f.DisplayName)!));
 
         // Map back to file paths (strip markup for comparison)
@@ -173,6 +173,7 @@ partial class Program
                 new SelectionPrompt<string>()
                     .Title($"[cyan]What would you like to do?[/] [dim](Embeddings: {config.EmbeddingProvider} | Model: {config.ChatBackend} - {config.ChatModel})[/]")
                     .PageSize(10)
+                    .MoreChoicesText("[grey](Move with ↑↓, select with [green]Enter[/], [yellow]ESC[/] or [red]❌ Exit[/] to quit)[/]")
                     .AddChoices(new[] {
                         "💬 Talk to Assistant",
                         "🔍 Search Documents",
@@ -429,42 +430,32 @@ partial class Program
             AnsiConsole.WriteLine();
 
             var firstContentSignal = new TaskCompletionSource<bool>();
-            var pendingLogs = new List<string>();
-            var logLock = new object();
             var printer = new StreamingMarkdownPrinter(() => firstContentSignal.TrySetResult(true));
             using var cts = new CancellationTokenSource();
             var responseEnumeration = DocumentAssistant.ChatAsync(userMessage, cts.Token).GetAsyncEnumerator();
 
-            void FlushToolLogs()
+            void DisplayToolLog(string msg)
             {
-                lock (logLock)
+                // Strip all residual [tags] to prevent literal markup visibility
+                var clean = System.Text.RegularExpressions.Regex.Replace(msg, @"\[.*?\]", "");
+                clean = clean.Trim();
+
+                // Display immediately - no batching
+                var table = new Table().HideHeaders().NoBorder();
+                table.AddColumn("content");
+                table.AddRow(new Text(clean, new Style(foreground: Color.Green, decoration: Decoration.None)));
+
+                var panel = new Panel(table)
                 {
-                    if (pendingLogs.Count == 0) return;
+                    Border = BoxBorder.Rounded,
+                    BorderStyle = new Style(foreground: Color.Green),
+                    Padding = new Padding(1, 0),
+                    Expand = false
+                };
 
-                    var table = new Table().HideHeaders().NoBorder();
-                    table.AddColumn("content");
-                    foreach (var log in pendingLogs)
-                    {
-                        // Foolproof strip of all residual [tags] to prevent literal markup visibility
-                        var clean = System.Text.RegularExpressions.Regex.Replace(log, @"\[.*?\]", "");
-                        clean = clean.Trim();
-
-                        // Using green to indicate tool activity/progress
-                        table.AddRow(new Text(clean, new Style(foreground: Color.Green, decoration: Decoration.None)));
-                    }
-
-                    var panel = new Panel(table)
-                    {
-                        Border = BoxBorder.Rounded,
-                        BorderStyle = new Style(foreground: Color.Green),
-                        Padding = new Padding(1, 0),
-                        Expand = false
-                    };
-
-                    AnsiConsole.Write(panel);
-                    pendingLogs.Clear();
-                }
+                AnsiConsole.Write(panel);
             }
+
             try
             {
                 // 1. Initial Header
@@ -473,7 +464,7 @@ partial class Program
 
                 DocumentAssistant.ToolLog = (msg) =>
                 {
-                    lock (logLock) pendingLogs.Add(msg);
+                    DisplayToolLog(msg);
                     firstContentSignal.TrySetResult(true);
                 };
 
@@ -492,8 +483,8 @@ partial class Program
 
                             currentTokenAppended = false;
 
-                            // Exit early if we have logs or printer flushed a line
-                            if (pendingLogs.Count > 0 || firstContentSignal.Task.IsCompleted)
+                            // Exit early if printer flushed a line or tool was called
+                            if (firstContentSignal.Task.IsCompleted)
                                 break;
 
                             printer.Append(responseEnumeration.Current);
@@ -509,11 +500,6 @@ partial class Program
                 {
                     while (true)
                     {
-                        if (pendingLogs.Count > 0)
-                        {
-                            FlushToolLogs();
-                        }
-
                         if (!hasNext) break;
 
                         if (!currentTokenAppended)
@@ -527,8 +513,6 @@ partial class Program
                 }
                 finally
                 {
-                    // Final flush for any trailing logs
-                    FlushToolLogs();
                     DocumentAssistant.ToolLog = null;
                     printer.Finish();
                 }
@@ -551,6 +535,7 @@ partial class Program
         var choice = AnsiConsole.Prompt(
             new SelectionPrompt<string>()
                 .Title("[cyan]Settings[/]")
+                .MoreChoicesText("[grey]([yellow]ESC[/] or select [cyan]🔙 Back[/] to return)[/]")
                 .AddChoices(new[] {
                     "🔑 Update API Key",
                     "📂 Show Loaded Documents",
@@ -675,6 +660,7 @@ partial class Program
             new SelectionPrompt<string>()
                 .Title("[cyan]Choose Operating Mode:[/]")
                 .PageSize(10)
+                .MoreChoicesText("[grey]([yellow]ESC[/] to keep current settings)[/]")
                 .AddChoices(new[] {
                     "💻 Local (Offline) - Ollama + Ollama Embeddings",
                     "☁️  Cloud (Online) - Cloud Models + OpenAI Embeddings"
@@ -744,6 +730,7 @@ partial class Program
                  new SelectionPrompt<string>()
                      .Title("[cyan]Select Chat Provider:[/]")
                      .PageSize(10)
+                     .MoreChoicesText("[grey]([yellow]ESC[/] to go back)[/]")
                      .AddChoices(new[] {
                          "OpenAI",
                          "Anthropic",
@@ -860,6 +847,7 @@ partial class Program
             new SelectionPrompt<string>()
                .Title("[cyan]Select Local Ollama Model:[/]")
                .PageSize(10)
+               .MoreChoicesText("[grey]([yellow]ESC[/] to go back)[/]")
                .AddChoices(modelChoices));
 
         string modelName = "";

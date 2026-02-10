@@ -229,7 +229,6 @@ public static class OllamaManager
                     return false;
                 }
 
-                AnsiConsole.MarkupLine($"[dim]Checking Ollama health... (attempt {i + 1}/30)[/]");
                 if (await IsOllamaRunningAsync())
                 {
                     AnsiConsole.MarkupLine("[green]✓[/] Ollama service started and responding");
@@ -335,10 +334,7 @@ public static class OllamaManager
                     while (!process.HasExited)
                     {
                         var line = await process.StandardOutput.ReadLineAsync();
-                        if (!string.IsNullOrWhiteSpace(line))
-                        {
-                            Console.WriteLine(line); // Direct console output to avoid markup issues
-                        }
+                        // Progress output removed - keeping silent for cleaner UX
                     }
                 }
                 catch { }
@@ -351,10 +347,7 @@ public static class OllamaManager
                     while (!process.HasExited)
                     {
                         var line = await process.StandardError.ReadLineAsync();
-                        if (!string.IsNullOrWhiteSpace(line))
-                        {
-                            Console.WriteLine(line); // Progress often goes to stderr
-                        }
+                        // Progress output removed - keeping silent for cleaner UX
                     }
                 }
                 catch { }
