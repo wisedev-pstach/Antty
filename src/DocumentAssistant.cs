@@ -54,7 +54,7 @@ public class DocumentAssistant
     /// </summary>
     public static async Task Initialize(AppConfig config, MultiBookSearchEngine searchEngine, List<(string filePath, string kbPath)> documents, BackendType backendType, string modelName)
     {
-        AnsiConsole.MarkupLine($"[dim]DocumentAssistant: Initializing with backend={backendType}, model={modelName.EscapeMarkup()}[/]");
+        // Initializing DocumentAssistant silently
 
         _searchEngine = searchEngine;
         _documents = documents;
@@ -63,7 +63,7 @@ public class DocumentAssistant
 
         // Extract document names for system prompt
         var documentNames = documents.Select(d => Path.GetFileNameWithoutExtension(d.filePath)).ToList();
-        AnsiConsole.MarkupLine($"[dim]DocumentAssistant: Loaded {documentNames.Count} documents[/]");
+        // Loaded documents silently
 
         // Set backend-specific environment variables for keys
         switch (backendType)
@@ -88,7 +88,7 @@ public class DocumentAssistant
                 break;
         }
 
-        AnsiConsole.MarkupLine("[dim]DocumentAssistant: Creating AI agent...[/]");
+        // Creating AI agent silently
 
         // Initialize unified agent
         _assistantAgent = await AIHub.Agent()
@@ -151,7 +151,7 @@ public class DocumentAssistant
                 StepBuilder.Instance.Answer().Build())
             .CreateAsync();
 
-        AnsiConsole.MarkupLine("[green]✓[/] [dim]DocumentAssistant: AI agent created successfully[/]");
+        // AI agent created successfully
     }
 
     /// <summary>
@@ -162,7 +162,7 @@ public class DocumentAssistant
         if (_assistantAgent == null)
             throw new InvalidOperationException("Assistant not initialized. Call Initialize() first.");
 
-        AnsiConsole.MarkupLine($"[dim]DocumentAssistant: Received user message ({userMessage.Length} chars)[/]");
+        // Received user message silently
 
         // Add user message to conversation history
         var userMsg = new MaIN.Domain.Entities.Message
@@ -177,7 +177,7 @@ public class DocumentAssistant
         var channel = System.Threading.Channels.Channel.CreateUnbounded<string>();
         var assistantResponse = new System.Text.StringBuilder();
 
-        AnsiConsole.MarkupLine($"[dim]DocumentAssistant: Starting AI ProcessAsync with {_conversationHistory.Count} messages in history...[/]");
+        // Starting AI ProcessAsync silently
 
         var processTask = _assistantAgent.ProcessAsync(
             _conversationHistory, // Use full conversation history
@@ -203,12 +203,12 @@ public class DocumentAssistant
             }
             else if (t.IsCanceled)
             {
-                AnsiConsole.MarkupLine("[yellow]DocumentAssistant: ProcessAsync was canceled[/]");
+                // ProcessAsync was canceled
                 channel.Writer.Complete(new OperationCanceledException());
             }
             else
             {
-                AnsiConsole.MarkupLine("[dim]DocumentAssistant: ProcessAsync completed successfully[/]");
+                // ProcessAsync completed successfully
                 channel.Writer.Complete();
             }
         });
@@ -221,7 +221,7 @@ public class DocumentAssistant
             yield return text;
         }
 
-        AnsiConsole.MarkupLine($"[dim]DocumentAssistant: Received {tokenCount} tokens, total response length: {assistantResponse.Length} chars[/]");
+        // Received tokens silently
 
         // Add assistant response to conversation history
         if (assistantResponse.Length > 0)

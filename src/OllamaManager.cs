@@ -106,23 +106,10 @@ public static class OllamaManager
         {
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
             var response = await client.GetAsync(OllamaHealthUrl);
-            var isRunning = response.IsSuccessStatusCode;
-
-            if (isRunning)
-            {
-                var body = await response.Content.ReadAsStringAsync();
-                AnsiConsole.MarkupLine($"[dim]Ollama health check: SUCCESS (Status: {response.StatusCode}, Body: {body.EscapeMarkup()})[/]");
-            }
-            else
-            {
-                AnsiConsole.MarkupLine($"[yellow]Ollama health check: FAILED (Status: {response.StatusCode})[/]");
-            }
-
-            return isRunning;
+            return response.IsSuccessStatusCode;
         }
-        catch (Exception ex)
+        catch
         {
-            AnsiConsole.MarkupLine($"[yellow]Ollama health check: EXCEPTION ({ex.GetType().Name}: {ex.Message.EscapeMarkup()})[/]");
             return false;
         }
     }
@@ -137,13 +124,11 @@ public static class OllamaManager
             // If already running, don't start again
             if (_ollamaProcess != null && !_ollamaProcess.HasExited)
             {
-                AnsiConsole.MarkupLine("[dim]Ollama process already running[/]");
                 return true;
             }
 
             // Use the shared helper to get Ollama executable path
             var fileName = GetOllamaExecutablePath();
-            AnsiConsole.MarkupLine($"[dim]Ollama executable path: {fileName.EscapeMarkup()}[/]");
 
             var startInfo = new ProcessStartInfo
             {
@@ -155,18 +140,14 @@ public static class OllamaManager
                 RedirectStandardError = true
             };
 
-            AnsiConsole.MarkupLine($"[dim]Starting Ollama with command: {fileName.EscapeMarkup()} serve[/]");
-
             // Start the process and keep reference
             _ollamaProcess = Process.Start(startInfo);
 
             if (_ollamaProcess == null)
             {
-                AnsiConsole.MarkupLine("[red]✗[/] Failed to start Ollama process - Process.Start returned null[/]");
+                AnsiConsole.MarkupLine("[red]✗[/] Failed to start Ollama process[/]");
                 return false;
             }
-
-            AnsiConsole.MarkupLine($"[dim]Ollama process started with PID: {_ollamaProcess.Id}[/]");
 
             // Monitor stderr in background (Ollama logs go to stderr)
             _ = Task.Run(async () =>
@@ -178,10 +159,7 @@ public static class OllamaManager
                         var line = await _ollamaProcess.StandardError.ReadLineAsync();
                         if (line != null)
                         {
-                            // Log all stderr output for debugging
-                            AnsiConsole.MarkupLine($"[dim]Ollama stderr:[/] [grey]{line.EscapeMarkup()}[/]");
-
-                            // Highlight errors
+                            // Only show errors, suppress normal logs
                             if (line.Contains("level=ERROR", StringComparison.OrdinalIgnoreCase))
                             {
                                 AnsiConsole.MarkupLine($"[red]Ollama ERROR:[/] [dim]{line.EscapeMarkup()}[/]");
@@ -189,13 +167,13 @@ public static class OllamaManager
                         }
                     }
                 }
-                catch (Exception ex)
+                catch
                 {
-                    AnsiConsole.MarkupLine($"[yellow]Error reading Ollama stderr:[/] [dim]{ex.Message.EscapeMarkup()}[/]");
+                    // Suppress stderr read errors
                 }
             });
 
-            // Monitor stdout in background
+            // Monitor stdout in background (suppress normal output, only consume to prevent buffer issues)
             _ = Task.Run(async () =>
             {
                 try
@@ -203,35 +181,28 @@ public static class OllamaManager
                     while (!_ollamaProcess.HasExited)
                     {
                         var line = await _ollamaProcess.StandardOutput.ReadLineAsync();
-                        if (line != null)
-                        {
-                            AnsiConsole.MarkupLine($"[dim]Ollama stdout:[/] [grey]{line.EscapeMarkup()}[/]");
-                        }
+                        // Suppress stdout logs
                     }
                 }
-                catch (Exception ex)
+                catch
                 {
-                    AnsiConsole.MarkupLine($"[yellow]Error reading Ollama stdout:[/] [dim]{ex.Message.EscapeMarkup()}[/]");
+                    // Suppress stdout read errors
                 }
             });
 
-            AnsiConsole.MarkupLine("[cyan]⏳[/] Starting Ollama service...");
-
             // Wait for service to be ready with progress (increased timeout for first run)
-            AnsiConsole.MarkupLine($"[dim]Waiting for Ollama to respond at {OllamaHealthUrl}...[/]");
             for (int i = 0; i < 30; i++)
             {
                 await Task.Delay(1000);
 
                 if (_ollamaProcess.HasExited)
                 {
-                    AnsiConsole.MarkupLine($"[red]✗[/] Ollama process exited unexpectedly with code {_ollamaProcess.ExitCode}");
+                    AnsiConsole.MarkupLine($"[red]✗[/] Ollama process exited unexpectedly");
                     return false;
                 }
 
                 if (await IsOllamaRunningAsync())
                 {
-                    AnsiConsole.MarkupLine("[green]✓[/] Ollama service started and responding");
                     return true;
                 }
             }
@@ -795,7 +766,7 @@ public static class OllamaManager
             await Task.Delay(2000);
 
             // Start Ollama service after fresh installation
-            AnsiConsole.MarkupLine("[cyan]Starting Ollama service...[/]");
+            // Starting Ollama service silently
             if (!await StartOllamaAsync())
             {
                 AnsiConsole.MarkupLine("[red]✗[/] Failed to start Ollama");
@@ -809,7 +780,7 @@ public static class OllamaManager
         // Check if running
         if (!await IsOllamaRunningAsync())
         {
-            AnsiConsole.MarkupLine("[yellow]⚠[/] Ollama service is not running");
+            // Ollama service is not running, attempting to start
 
             // Try to start it
             if (!await StartOllamaAsync())
@@ -821,7 +792,7 @@ public static class OllamaManager
         }
         else
         {
-            AnsiConsole.MarkupLine("[green]✓[/] Ollama service is running");
+            // Ollama service is running
         }
 
         return true;

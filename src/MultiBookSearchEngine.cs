@@ -37,8 +37,7 @@ public class MultiBookSearchEngine
             }
         }
 
-        AnsiConsole.MarkupLine($"[green]✓[/] Loaded [bold cyan]{_engines.Count}[/] document(s) for searching");
-        AnsiConsole.WriteLine();
+
     }
 
     /// <summary>

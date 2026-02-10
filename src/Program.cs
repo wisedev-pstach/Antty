@@ -162,12 +162,10 @@ partial class Program
 
         while (running)
         {
-            AnsiConsole.WriteLine();
-            AnsiConsole.Write(new Rule().RuleStyle("dim"));
-            AnsiConsole.WriteLine();
+
 
             // Show loaded documents info
-            AnsiConsole.MarkupLine($"[dim]Loaded documents: {multiEngine.LoadedDocumentCount}[/]");
+
 
             var choice = AnsiConsole.Prompt(
                 new SelectionPrompt<string>()
@@ -381,11 +379,15 @@ partial class Program
                         ? hit.Text.Substring(0, 147) + "..."
                         : hit.Text;
 
+                    // Escape markup characters to prevent parsing errors
+                    var escapedBookSource = Markup.Escape(hit.BookSource);
+                    var escapedText = Markup.Escape(truncatedText);
+
                     table.AddRow(
-                        $"[cyan]{hit.BookSource}[/]",
+                        $"[cyan]{escapedBookSource}[/]",
                         $"[dim]{hit.Page}[/]",
                         $"[{scoreColor}]{hit.Score:P1}[/]",
-                        $"[dim]{truncatedText}[/]"
+                        $"[dim]{escapedText}[/]"
                     );
                 }
 
@@ -402,11 +404,11 @@ partial class Program
         AnsiConsole.WriteLine();
 
         // Initialize the assistant
-        AnsiConsole.MarkupLine("[dim]Initializing AI assistant...[/]");
+
         try
         {
             await DocumentAssistant.Initialize(config, multiEngine, documents, backendType, modelName);
-            AnsiConsole.MarkupLine("[green]✓[/] Assistant ready!");
+
         }
         catch (Exception ex)
         {
@@ -415,7 +417,7 @@ partial class Program
         }
 
         AnsiConsole.WriteLine();
-        AnsiConsole.MarkupLine($"[dim]Loaded {multiEngine.LoadedDocumentCount} document(s). Ask me anything about them![/]");
+
         AnsiConsole.WriteLine();
 
         while (true)
@@ -440,20 +442,8 @@ partial class Program
                 var clean = System.Text.RegularExpressions.Regex.Replace(msg, @"\[.*?\]", "");
                 clean = clean.Trim();
 
-                // Display immediately - no batching
-                var table = new Table().HideHeaders().NoBorder();
-                table.AddColumn("content");
-                table.AddRow(new Text(clean, new Style(foreground: Color.Green, decoration: Decoration.None)));
-
-                var panel = new Panel(table)
-                {
-                    Border = BoxBorder.Rounded,
-                    BorderStyle = new Style(foreground: Color.Green),
-                    Padding = new Padding(1, 0),
-                    Expand = false
-                };
-
-                AnsiConsole.Write(panel);
+                // Display as compact steel blue italic text with left accent bar and spacing
+                AnsiConsole.MarkupLine($"  [steelblue1 italic]│ {clean.EscapeMarkup()}[/]");
             }
 
             try
@@ -545,12 +535,57 @@ partial class Program
 
         if (choice.StartsWith("🔑"))
         {
-            config.ApiKey = AnsiConsole.Prompt(
-                new TextPrompt<string>("[cyan]Enter your OpenAI API Key:[/]")
+            // Let user select which provider's key to update
+            var providerChoice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[cyan]Select provider to update API key:[/]")
+                    .PageSize(10)
+                    .MoreChoicesText("[grey]([yellow]ESC[/] or select [cyan]🔙 Cancel[/] to return)[/]")
+                    .AddChoices(new[] {
+                        "OpenAI",
+                        "Anthropic",
+                        "Google Gemini",
+                        "DeepSeek",
+                        "XAI (Grok)",
+                        "Groq",
+                        "🔙 Cancel"
+                    }));
+
+            if (providerChoice == "🔙 Cancel")
+            {
+                return;
+            }
+
+            string newKey = AnsiConsole.Prompt(
+                new TextPrompt<string>($"[cyan]Enter your {providerChoice} API Key:[/]")
                     .PromptStyle("green")
                     .Secret());
+
+            // Update the appropriate key field
+            switch (providerChoice)
+            {
+                case "OpenAI":
+                    config.ApiKey = newKey;
+                    break;
+                case "Anthropic":
+                    config.AnthropicKey = newKey;
+                    break;
+                case "Google Gemini":
+                    config.GeminiKey = newKey;
+                    break;
+                case "DeepSeek":
+                    config.DeepSeekKey = newKey;
+                    break;
+                case "XAI (Grok)":
+                    config.XaiKey = newKey;
+                    break;
+                case "Groq":
+                    config.GroqKey = newKey;
+                    break;
+            }
+
             config.Save();
-            AnsiConsole.MarkupLine("[green]✓[/] API Key updated!");
+            AnsiConsole.MarkupLine($"[green]✓[/] {providerChoice} API Key updated!");
         }
         else if (choice.StartsWith("📂"))
         {
@@ -703,7 +738,7 @@ partial class Program
                     return (null, backendType, "");
                 }
             }
-            AnsiConsole.MarkupLine($"[green]✓[/] Using Ollama embeddings: [cyan]{embeddingModel}[/]");
+            // Using Ollama embeddings silently
             AnsiConsole.WriteLine();
 
             // 3. Setup Local Chat Model
