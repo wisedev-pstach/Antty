@@ -1,7 +1,8 @@
+using Antty.Models;
 using Antty.Embedding;
 using Spectre.Console;
 
-namespace Antty;
+namespace Antty.Core;
 
 /// <summary>
 /// Search engine that manages multiple documents and aggregates search results
@@ -52,8 +53,7 @@ public class MultiBookSearchEngine
 
             foreach (var result in results)
             {
-                result.BookSource = bookName;
-                allResults.Add(result);
+                allResults.Add(result with { BookSource = bookName });
             }
         }
 

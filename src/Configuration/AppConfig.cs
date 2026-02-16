@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Antty;
+namespace Antty.Configuration;
 
 public class AppConfig
 {

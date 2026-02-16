@@ -1,9 +1,10 @@
+using Antty.Models;
 using Antty.Embedding;
 using System.Numerics.Tensors;
 using System.Text.Json;
 using Spectre.Console;
 
-namespace Antty;
+namespace Antty.Core;
 
 public class SearchEngine
 {
@@ -114,12 +115,12 @@ public class SearchEngine
 
             if (similarity > 0.45)
             {
-                results.Add(new RawSearchResult
-                {
-                    Text = chunk.Content,
-                    Page = chunk.PageNumber,
-                    Score = similarity
-                });
+                results.Add(new RawSearchResult(
+                    Text: chunk.Content,
+                    Page: chunk.PageNumber,
+                    Score: similarity,
+                    BookSource: ""
+                ));
             }
         }
 

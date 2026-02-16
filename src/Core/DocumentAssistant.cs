@@ -1,3 +1,5 @@
+using Antty.Configuration;
+using Antty.Models;
 using MaIN.Core.Hub;
 using MaIN.Core.Hub.Contexts;
 using MaIN.Core.Hub.Utils;
@@ -8,25 +10,7 @@ using MaIN.Core.Hub.Contexts.Interfaces.AgentContext;
 using MaIN.Domain.Entities;
 using MaIN.Services.Services;
 
-namespace Antty;
-
-/// <summary>
-/// Tool arguments for searching documents
-/// </summary>
-public class SearchDocumentsArgs
-{
-    public string query { get; set; } = string.Empty;
-    public int maxResults { get; set; } = 5;
-}
-
-/// <summary>
-/// Tool arguments for reading a specific page
-/// </summary>
-public class ReadPageArgs
-{
-    public string documentName { get; set; } = string.Empty;
-    public int pageNumber { get; set; }
-}
+namespace Antty.Core;
 
 /// <summary>
 /// AI Assistant for conversational document queries using MaIN.NET

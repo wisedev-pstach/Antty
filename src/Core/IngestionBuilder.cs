@@ -1,9 +1,10 @@
+using Antty.Models;
 using Antty.Embedding;
 using System.Text.Json;
 using UglyToad.PdfPig;
 using Spectre.Console;
 
-namespace Antty;
+namespace Antty.Core;
 
 public static class IngestionBuilder
 {
@@ -39,12 +40,12 @@ public static class IngestionBuilder
                         if (cleanText.Length < 30) continue;
                         if (int.TryParse(cleanText, out _)) continue;
 
-                        chunks.Add(new RawChunk
-                        {
-                            Id = globalId++,
-                            PageNumber = pageNumber,
-                            Content = cleanText
-                        });
+                        chunks.Add(new RawChunk(
+                            Id: globalId++,
+                            PageNumber: pageNumber,
+                            Content: cleanText,
+                            Vector: Array.Empty<float>()
+                        ));
                     }
 
                     task.Increment(1);
@@ -79,7 +80,7 @@ public static class IngestionBuilder
 
                         for (int j = 0; j < batch.Count; j++)
                         {
-                            batch[j].Vector = embeddings[j];
+                            chunks[i + j] = chunks[i + j] with { Vector = embeddings[j] };
                         }
 
                         task.Increment(batch.Count);

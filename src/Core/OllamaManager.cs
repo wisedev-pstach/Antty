@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using Spectre.Console;
 
-namespace Antty;
+namespace Antty.Core;
 
 /// <summary>
 /// Manages Ollama installation, service, and models
