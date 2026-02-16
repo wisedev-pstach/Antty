@@ -5,9 +5,6 @@ using Spectre.Console;
 
 namespace Antty.Embedding;
 
-/// <summary>
-/// Local GGUF embedding provider using LLamaSharp
-/// </summary>
 public class LocalEmbeddingProvider : IEmbeddingProvider
 {
     private LLamaEmbedder _embedder = null!;
@@ -28,9 +25,9 @@ public class LocalEmbeddingProvider : IEmbeddingProvider
 
         var modelParams = new ModelParams(modelPath)
         {
-            PoolingType = LLamaPoolingType.Mean,  // Combine embeddings into single vector
-            GpuLayerCount = DetectGpuLayers(),  // Auto-detect GPU support
-            ContextSize = 8192  // Nomic supports 8192 token context
+            PoolingType = LLamaPoolingType.Mean,
+            GpuLayerCount = DetectGpuLayers(),
+            ContextSize = 8192
         };
 
         try
@@ -43,9 +40,8 @@ public class LocalEmbeddingProvider : IEmbeddingProvider
                     _weights = LLamaWeights.LoadFromFile(modelParams);
                     _embedder = new LLamaEmbedder(_weights, modelParams);
 
-                    // Get dimensions by generating a test embedding
                     var testEmbeddings = _embedder.GetEmbeddings("test").Result;
-                    var testEmbedding = testEmbeddings.Single(); // Should be single vector with Mean pooling
+                    var testEmbedding = testEmbeddings.Single();
                     _dimensions = testEmbedding.Length;
                 });
 
@@ -62,14 +58,13 @@ public class LocalEmbeddingProvider : IEmbeddingProvider
     public async Task<float[]> GenerateEmbeddingAsync(string text)
     {
         var embeddings = await _embedder.GetEmbeddings(text);
-        return embeddings.Single(); // Should be single vector with Mean pooling
+        return embeddings.Single();
     }
 
     public async Task<List<float[]>> GenerateEmbeddingsAsync(List<string> texts)
     {
         var embeddings = new List<float[]>();
 
-        // LLamaSharp doesn't have built-in batch support, process sequentially
         foreach (var text in texts)
         {
             var embedding = await _embedder.GetEmbeddings(text);
@@ -83,21 +78,19 @@ public class LocalEmbeddingProvider : IEmbeddingProvider
     {
         try
         {
-            // Try to detect CUDA availability
             var deviceCount = NativeApi.llama_max_devices();
             if (deviceCount > 0)
             {
                 AnsiConsole.MarkupLine("[green]✓[/] GPU acceleration enabled");
-                return 999; // Offload all layers to GPU
+                return 999;
             }
         }
         catch
         {
-            // CUDA not available, silently fall back to CPU
         }
 
         AnsiConsole.MarkupLine("[yellow]⚠[/] No GPU detected - using CPU");
-        return 0; // CPU-only
+        return 0;
     }
 
     public void Dispose()

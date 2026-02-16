@@ -14,20 +14,12 @@ public static class OllamaManager
     private const int OllamaDefaultPort = 11434;
     private static Process? _ollamaProcess;
 
-    /// <summary>
-    /// Get the full path to the Ollama executable, or just "ollama" to use from PATH
-    /// </summary>
     private static string GetOllamaExecutablePath()
     {
-        // Default: just use "ollama" command - works if it's in PATH (most installations)
-        // This respects user's environment and is the simplest approach
         string defaultCommand = "ollama";
 
-        // Quick check: if "ollama" is accessible in PATH, use it
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            // Only check specific paths if needed (for edge cases where PATH isn't set)
-            // This happens with some fresh Scoop installs before PATH refresh
             string[] commonPaths = {
                 // Official Ollama installer - user install (most common)
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Ollama", "ollama.exe"),
@@ -45,7 +37,6 @@ public static class OllamaManager
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Ollama", "ollama.exe")
             };
 
-            // Only use specific path if we can verify it exists
             foreach (var path in commonPaths)
             {
                 if (File.Exists(path))
@@ -55,26 +46,20 @@ public static class OllamaManager
             }
         }
 
-        // Default: just return "ollama" and let OS handle path resolution
         return defaultCommand;
     }
 
-    /// <summary>
-    /// Check if Ollama is installed on the system
-    /// </summary>
     public static bool IsOllamaInstalled()
     {
         try
         {
             var ollamaPath = GetOllamaExecutablePath();
 
-            // If we found a specific path (not just "ollama"), check if it exists
             if (ollamaPath != "ollama" && !File.Exists(ollamaPath))
             {
                 return false;
             }
 
-            // Try to run ollama --version to verify it works
             var startInfo = new ProcessStartInfo
             {
                 FileName = ollamaPath,
@@ -97,9 +82,6 @@ public static class OllamaManager
         }
     }
 
-    /// <summary>
-    /// Check if Ollama service is running
-    /// </summary>
     public static async Task<bool> IsOllamaRunningAsync()
     {
         try
@@ -114,20 +96,15 @@ public static class OllamaManager
         }
     }
 
-    /// <summary>
-    /// Start Ollama service in background
-    /// </summary>
     public static async Task<bool> StartOllamaAsync()
     {
         try
         {
-            // If already running, don't start again
             if (_ollamaProcess != null && !_ollamaProcess.HasExited)
             {
                 return true;
             }
 
-            // Use the shared helper to get Ollama executable path
             var fileName = GetOllamaExecutablePath();
 
             var startInfo = new ProcessStartInfo
@@ -140,7 +117,6 @@ public static class OllamaManager
                 RedirectStandardError = true
             };
 
-            // Start the process and keep reference
             _ollamaProcess = Process.Start(startInfo);
 
             if (_ollamaProcess == null)
@@ -149,7 +125,6 @@ public static class OllamaManager
                 return false;
             }
 
-            // Monitor stderr in background (Ollama logs go to stderr)
             _ = Task.Run(async () =>
             {
                 try
@@ -159,7 +134,6 @@ public static class OllamaManager
                         var line = await _ollamaProcess.StandardError.ReadLineAsync();
                         if (line != null)
                         {
-                            // Only show errors, suppress normal logs
                             if (line.Contains("level=ERROR", StringComparison.OrdinalIgnoreCase))
                             {
                                 AnsiConsole.MarkupLine($"[red]Ollama ERROR:[/] [dim]{line.EscapeMarkup()}[/]");
@@ -169,11 +143,9 @@ public static class OllamaManager
                 }
                 catch
                 {
-                    // Suppress stderr read errors
                 }
             });
 
-            // Monitor stdout in background (suppress normal output, only consume to prevent buffer issues)
             _ = Task.Run(async () =>
             {
                 try
@@ -181,16 +153,13 @@ public static class OllamaManager
                     while (!_ollamaProcess.HasExited)
                     {
                         var line = await _ollamaProcess.StandardOutput.ReadLineAsync();
-                        // Suppress stdout logs
                     }
                 }
                 catch
                 {
-                    // Suppress stdout read errors
                 }
             });
 
-            // Wait for service to be ready with progress (increased timeout for first run)
             for (int i = 0; i < 30; i++)
             {
                 await Task.Delay(1000);
@@ -217,9 +186,6 @@ public static class OllamaManager
         }
     }
 
-    /// <summary>
-    /// Get list of installed Ollama models
-    /// </summary>
     public static async Task<List<string>> GetInstalledModelsAsync()
     {
         try
@@ -240,7 +206,6 @@ public static class OllamaManager
             var output = await process.StandardOutput.ReadToEndAsync();
             await process.WaitForExitAsync();
 
-            // Parse output - first line is header, rest are models
             var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
             var models = new List<string>();
 
@@ -249,7 +214,7 @@ public static class OllamaManager
                 var parts = lines[i].Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length > 0)
                 {
-                    models.Add(parts[0]); // First column is model name
+                    models.Add(parts[0]);
                 }
             }
 
@@ -261,18 +226,12 @@ public static class OllamaManager
         }
     }
 
-    /// <summary>
-    /// Check if a specific model is installed
-    /// </summary>
     public static async Task<bool> IsModelInstalledAsync(string modelName)
     {
         var models = await GetInstalledModelsAsync();
         return models.Any(m => m.Contains(modelName, StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>
-    /// Pull/download an Ollama model with progress
-    /// </summary>
     public static async Task<bool> PullModelAsync(string modelName)
     {
         try
@@ -305,7 +264,6 @@ public static class OllamaManager
                     while (!process.HasExited)
                     {
                         var line = await process.StandardOutput.ReadLineAsync();
-                        // Progress output removed - keeping silent for cleaner UX
                     }
                 }
                 catch { }
@@ -318,7 +276,6 @@ public static class OllamaManager
                     while (!process.HasExited)
                     {
                         var line = await process.StandardError.ReadLineAsync();
-                        // Progress output removed - keeping silent for cleaner UX
                     }
                 }
                 catch { }
@@ -336,19 +293,16 @@ public static class OllamaManager
 
             if (process.ExitCode == 0)
             {
-                // Give Ollama a moment to finalize the model
                 await Task.Delay(1000);
 
                 var fileSizeMB = await GetModelSizeAsync(modelName);
 
-                // If size check fails but exit code was 0, trust the exit code
                 if (fileSizeMB > 0.1)
                 {
                     AnsiConsole.MarkupLine($"[green]✓[/] Model downloaded: [cyan]{fileSizeMB:F1} GB[/]");
                 }
                 else
                 {
-                    // Exit code 0 means success, even if size check had issues
                     AnsiConsole.MarkupLine($"[green]✓[/] Model downloaded successfully");
                 }
                 return true;
@@ -364,9 +318,6 @@ public static class OllamaManager
         }
     }
 
-    /// <summary>
-    /// Get model size (approximate from ollama list)
-    /// </summary>
     private static async Task<double> GetModelSizeAsync(string modelName)
     {
         try
@@ -391,7 +342,6 @@ public static class OllamaManager
             {
                 if (line.Contains(modelName, StringComparison.OrdinalIgnoreCase))
                 {
-                    // Try to parse size from output
                     var parts = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
                     foreach (var part in parts)
                     {
@@ -410,9 +360,6 @@ public static class OllamaManager
         return 0;
     }
 
-    /// <summary>
-    /// Get installation instructions for current platform
-    /// </summary>
     public static string GetInstallInstructions()
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
@@ -453,16 +400,12 @@ public static class OllamaManager
         return "Visit https://ollama.com/download for installation instructions.";
     }
 
-    /// <summary>
-    /// Try to install Ollama silently
-    /// </summary>
     private static async Task<bool> TryAutoInstallAsync()
     {
         try
         {
             if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             {
-                // Use Homebrew on macOS
                 return await AnsiConsole.Status()
                     .Spinner(Spinner.Known.Dots)
                     .SpinnerStyle(Style.Parse("cyan bold"))
@@ -512,7 +455,6 @@ public static class OllamaManager
             }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
-                // Use the official install script on Linux
                 return await AnsiConsole.Status()
                     .Spinner(Spinner.Known.Dots)
                     .SpinnerStyle(Style.Parse("cyan bold"))
@@ -557,7 +499,6 @@ public static class OllamaManager
             }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                // Install Ollama via Scoop package manager
                 return await AnsiConsole.Status()
                     .Spinner(Spinner.Known.Dots)
                     .SpinnerStyle(Style.Parse("cyan bold"))
@@ -565,7 +506,6 @@ public static class OllamaManager
                     {
                         try
                         {
-                            // Check if Scoop is installed
                             bool scoopInstalled = false;
                             try
                             {
@@ -591,7 +531,6 @@ public static class OllamaManager
                                 scoopInstalled = false;
                             }
 
-                            // Install Scoop if not present
                             if (!scoopInstalled)
                             {
                                 ctx.Status("[cyan]Scoop not found. Installing Scoop...[/]");
@@ -600,7 +539,6 @@ public static class OllamaManager
                                 AnsiConsole.MarkupLine("[dim]   Scoop is a Windows package manager: https://scoop.sh[/]");
                                 AnsiConsole.WriteLine();
 
-                                // Install Scoop using the official installation command
                                 var installScoopInfo = new ProcessStartInfo
                                 {
                                     FileName = "powershell.exe",
@@ -618,7 +556,6 @@ public static class OllamaManager
                                     return false;
                                 }
 
-                                // Show output
                                 var outputTask = Task.Run(async () =>
                                 {
                                     while (!installScoop.HasExited)
@@ -649,7 +586,6 @@ public static class OllamaManager
                                 AnsiConsole.MarkupLine("[green]✓[/] Scoop installed successfully");
                                 await Task.Delay(1000);
 
-                                // Refresh PATH for current process to include Scoop
                                 var scoopPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "scoop", "shims");
                                 var currentProcessPath = Environment.GetEnvironmentVariable("Path") ?? "";
                                 if (!currentProcessPath.Contains(scoopPath))
@@ -663,15 +599,12 @@ public static class OllamaManager
                                 await Task.Delay(500);
                             }
 
-                            // Now install Ollama via Scoop
-                            ctx.Status("[cyan]Installing Ollama via Scoop...[/]");
                             AnsiConsole.WriteLine();
 
-                            // Use full path to scoop to ensure it's found
                             var scoopExecutable = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "scoop", "shims", "scoop.cmd");
                             if (!File.Exists(scoopExecutable))
                             {
-                                scoopExecutable = "scoop"; // Fallback to PATH
+                                scoopExecutable = "scoop";
                             }
 
                             var installOllamaInfo = new ProcessStartInfo
@@ -691,7 +624,6 @@ public static class OllamaManager
                                 return false;
                             }
 
-                            // Show installation output
                             var ollamaOutputTask = Task.Run(async () =>
                             {
                                 while (!installOllama.HasExited)
@@ -739,20 +671,14 @@ public static class OllamaManager
         return false;
     }
 
-    /// <summary>
-    /// Ensure Ollama is ready (installed and running)
-    /// </summary>
     public static async Task<bool> EnsureOllamaReadyAsync()
     {
-        // Check installation
         if (!IsOllamaInstalled())
         {
             AnsiConsole.MarkupLine("[yellow]⚠[/] Ollama is not installed");
 
-            // Try to auto-install
             if (!await TryAutoInstallAsync())
             {
-                // Auto-install failed, provide manual instructions
                 AnsiConsole.WriteLine();
                 AnsiConsole.MarkupLine("[red]✗[/] Auto-installation failed");
                 AnsiConsole.MarkupLine("[yellow]Please install manually:[/]");
@@ -762,37 +688,25 @@ public static class OllamaManager
                 return false;
             }
 
-            // Wait a moment for installation to complete
             await Task.Delay(2000);
 
-            // Start Ollama service after fresh installation
-            // Starting Ollama service silently
             if (!await StartOllamaAsync())
             {
                 AnsiConsole.MarkupLine("[red]✗[/] Failed to start Ollama");
                 return false;
             }
 
-            // Give it a moment to fully start
             await Task.Delay(2000);
         }
 
-        // Check if running
         if (!await IsOllamaRunningAsync())
         {
-            // Ollama service is not running, attempting to start
-
-            // Try to start it
             if (!await StartOllamaAsync())
             {
                 AnsiConsole.MarkupLine("[red]✗[/] Failed to start Ollama service");
                 AnsiConsole.MarkupLine("[yellow]Please start Ollama manually:[/] [cyan]ollama serve[/]");
                 return false;
             }
-        }
-        else
-        {
-            // Ollama service is running
         }
 
         return true;

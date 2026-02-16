@@ -15,7 +15,6 @@ public static class IngestionBuilder
         var chunks = new List<RawChunk>();
         int globalId = 0;
 
-        // 1. EXTRACT TEXT FROM FILE (supports PDF, TXT, MD, JSON)
         var extractedText = await ExtractTextFromFileAsync(filePath);
 
         await AnsiConsole.Progress()
@@ -31,17 +30,13 @@ public static class IngestionBuilder
 
                 foreach (var (pageNumber, text) in extractedText)
                 {
-                    // Simple splitting by double newline (paragraphs)
                     var paragraphs = text.Split(new[] { "\n\n", "\r\n\r\n" }, StringSplitOptions.RemoveEmptyEntries);
 
                     foreach (var para in paragraphs)
                     {
                         string cleanText = para.Replace("\n", " ").Trim();
 
-                        // --- 🧹 NOISE FILTERING ---
-                        // Skip if too short (headers, page nums, noise)
                         if (cleanText.Length < 30) continue;
-                        // Skip if it looks like just a number
                         if (int.TryParse(cleanText, out _)) continue;
 
                         chunks.Add(new RawChunk
@@ -53,14 +48,13 @@ public static class IngestionBuilder
                     }
 
                     task.Increment(1);
-                    await Task.Delay(1); // Allow UI to update
+                    await Task.Delay(1);
                 }
             });
 
         AnsiConsole.MarkupLine($"[green]✓[/] Extracted [bold cyan]{chunks.Count}[/] valid paragraphs.");
         AnsiConsole.WriteLine();
 
-        // 2. EMBEDDING (Batch Process)
         await AnsiConsole.Progress()
             .Columns(
                 new TaskDescriptionColumn(),
@@ -73,7 +67,7 @@ public static class IngestionBuilder
             {
                 var task = ctx.AddTask("[yellow]Generating embeddings[/]", maxValue: chunks.Count);
 
-                int batchSize = 10; // Send 10 paragraphs at a time
+                int batchSize = 10;
                 for (int i = 0; i < chunks.Count; i += batchSize)
                 {
                     var batch = chunks.Skip(i).Take(batchSize).ToList();
@@ -99,7 +93,6 @@ public static class IngestionBuilder
 
         AnsiConsole.WriteLine();
 
-        // 3. SAVE TO DISK WITH METADATA
         var knowledgeBase = new KnowledgeBase
         {
             Metadata = new KnowledgeBaseMetadata
@@ -126,10 +119,6 @@ public static class IngestionBuilder
         AnsiConsole.WriteLine();
     }
 
-    /// <summary>
-    /// Extracts text from various file formats (PDF, TXT, MD, JSON)
-    /// Returns a list of (page/section number, text content) tuples
-    /// </summary>
     private static async Task<List<(int pageNumber, string text)>> ExtractTextFromFileAsync(string filePath)
     {
         var extension = Path.GetExtension(filePath).ToLowerInvariant();
@@ -143,7 +132,6 @@ public static class IngestionBuilder
                 switch (extension)
                 {
                     case ".pdf":
-                        // Extract from PDF using PdfPig
                         using (var document = PdfDocument.Open(filePath))
                         {
                             foreach (var page in document.GetPages())
@@ -156,9 +144,7 @@ public static class IngestionBuilder
                     case ".txt":
                     case ".md":
                     case ".json":
-                        // Read text files directly
                         var content = await File.ReadAllTextAsync(filePath);
-                        // Split into "pages" of ~2000 characters for consistency
                         var chunkSize = 2000;
                         for (int i = 0; i < content.Length; i += chunkSize)
                         {

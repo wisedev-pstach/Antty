@@ -4,9 +4,6 @@ using OpenAI.Embeddings;
 
 namespace Antty.Embedding;
 
-/// <summary>
-/// OpenAI embedding provider using Azure.AI.OpenAI SDK
-/// </summary>
 public class OpenAIEmbeddingProvider : IEmbeddingProvider
 {
     private readonly EmbeddingClient _client;
@@ -51,6 +48,5 @@ public class OpenAIEmbeddingProvider : IEmbeddingProvider
 
     public void Dispose()
     {
-        // EmbeddingClient doesn't require disposal
     }
 }

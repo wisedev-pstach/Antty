@@ -10,9 +10,6 @@ public class MultiBookSearchEngine
 {
     private readonly List<(string bookName, SearchEngine engine)> _engines = new();
 
-    /// <summary>
-    /// Load multiple documents into memory for searching
-    /// </summary>
     public void LoadDocuments(IEmbeddingProvider provider, List<(string bookPath, string knowledgeBasePath)> documents)
     {
         _engines.Clear();
@@ -37,12 +34,8 @@ public class MultiBookSearchEngine
             }
         }
 
-
     }
 
-    /// <summary>
-    /// Search across all loaded documents and aggregate results
-    /// </summary>
     public async Task<List<RawSearchResult>> SearchAllAsync(string userQuestion, bool silent = false)
     {
         if (_engines.Count == 0)
@@ -53,12 +46,10 @@ public class MultiBookSearchEngine
 
         var allResults = new List<RawSearchResult>();
 
-        // Search each document
         foreach (var (bookName, engine) in _engines)
         {
             var results = await engine.SearchBookAsync(userQuestion, silent);
 
-            // Add book source to results
             foreach (var result in results)
             {
                 result.BookSource = bookName;
@@ -66,7 +57,6 @@ public class MultiBookSearchEngine
             }
         }
 
-        // Sort all results by score and return top 10
         return allResults
             .OrderByDescending(x => x.Score)
             .Take(10)

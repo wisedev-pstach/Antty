@@ -4,9 +4,6 @@ using Spectre.Console;
 
 namespace Antty.Embedding;
 
-/// <summary>
-/// Ollama-based embedding provider using nomic-embed-text
-/// </summary>
 public class OllamaEmbeddingProvider : IEmbeddingProvider
 {
     private readonly HttpClient _httpClient;
@@ -27,7 +24,6 @@ public class OllamaEmbeddingProvider : IEmbeddingProvider
             Timeout = TimeSpan.FromMinutes(5)
         };
 
-        // Test connection and get dimensions
         try
         {
             AnsiConsole.Status()
@@ -84,7 +80,6 @@ public class OllamaEmbeddingProvider : IEmbeddingProvider
     {
         var embeddings = new List<float[]>();
 
-        // Process sequentially to avoid overwhelming Ollama
         foreach (var text in texts)
         {
             var embedding = await GenerateEmbeddingAsync(text);

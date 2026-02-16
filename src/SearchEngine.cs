@@ -18,7 +18,6 @@ public class SearchEngine
         if (!File.Exists(dbPath))
             throw new FileNotFoundException("Database not found! Run Ingestion first.");
 
-        // Load Data into RAM
         KnowledgeBase? loadedKB = null;
         AnsiConsole.Status()
             .Spinner(Spinner.Known.Dots)
@@ -26,15 +25,13 @@ public class SearchEngine
             .Start($"[cyan]Loading knowledge base...[/]", ctx =>
             {
                 var json = File.ReadAllText(dbPath);
-                
-                // Try new format first (KnowledgeBase with Metadata)
+
                 try
                 {
                     loadedKB = JsonSerializer.Deserialize<KnowledgeBase>(json);
                 }
                 catch (JsonException)
                 {
-                    // Fall back to old format (RawChunk array)
                     try
                     {
                         var oldFormatChunks = JsonSerializer.Deserialize<List<RawChunk>>(json);
@@ -52,8 +49,7 @@ public class SearchEngine
                                 },
                                 Chunks = oldFormatChunks
                             };
-                            
-                            // Save in new format
+
                             var newJson = JsonSerializer.Serialize(loadedKB, new JsonSerializerOptions { WriteIndented = true });
                             File.WriteAllText(dbPath, newJson);
                             AnsiConsole.MarkupLine("[green]✓[/] Migrated to new format");
@@ -72,7 +68,6 @@ public class SearchEngine
         _metadata = loadedKB.Metadata;
         _database = loadedKB.Chunks;
 
-        // Validate provider compatibility
         if (_metadata.Provider != provider.ProviderName)
         {
             AnsiConsole.MarkupLine($"[yellow]⚠ Warning: Knowledge base was created with '{_metadata.Provider}' but using '{provider.ProviderName}' provider[/]");
@@ -83,13 +78,8 @@ public class SearchEngine
         AnsiConsole.WriteLine();
     }
 
-    /// <summary>
-    /// Searches the book for relevant content based on user question.
-    /// This method handles: embedding the question, computing similarities, and returning top results.
-    /// </summary>
     public async Task<List<RawSearchResult>> SearchBookAsync(string userQuestion, bool silent = false)
     {
-        // 1. Embed Question
         float[] queryVector = Array.Empty<float>();
 
         if (silent)
@@ -107,7 +97,6 @@ public class SearchEngine
                 });
         }
 
-        // Validate dimensions match
         if (queryVector.Length != _metadata.Dimensions)
         {
             throw new InvalidOperationException(
@@ -117,15 +106,12 @@ public class SearchEngine
                 $"Please rebuild the knowledge base with the current embedding provider.");
         }
 
-        // 2. Vector Math Search
         var results = new List<RawSearchResult>();
 
         foreach (var chunk in _database)
         {
-            // Cosine Similarity: 1.0 is identical, 0.0 is unrelated
             double similarity = TensorPrimitives.CosineSimilarity(chunk.Vector, queryVector);
 
-            // 3. Threshold Filtering (0.45 eliminates most irrelevant noise)
             if (similarity > 0.45)
             {
                 results.Add(new RawSearchResult
@@ -137,7 +123,6 @@ public class SearchEngine
             }
         }
 
-        // 4. Return Top 5 Sorted
         return results
             .OrderByDescending(x => x.Score)
             .Take(5)

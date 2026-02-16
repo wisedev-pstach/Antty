@@ -38,9 +38,6 @@ public class DocumentAssistant
     private static IAgentContextExecutor? _assistantAgent;
     private static List<Message> _conversationHistory = new();
 
-    /// <summary>
-    /// Callback for tool execution logs (e.g. "Searching for...")
-    /// </summary>
     public static Action<string>? ToolLog { get; set; }
 
     private static void LogTool(string message)
@@ -49,23 +46,15 @@ public class DocumentAssistant
         else AnsiConsole.MarkupLine(message);
     }
 
-    /// <summary>
-    /// Initialize the document assistant with loaded documents
-    /// </summary>
     public static async Task Initialize(AppConfig config, MultiBookSearchEngine searchEngine, List<(string filePath, string kbPath)> documents, BackendType backendType, string modelName)
     {
-        // Initializing DocumentAssistant silently
-
         _searchEngine = searchEngine;
         _documents = documents;
         _conversationHistory.Clear();
         AIHub.Extensions.DisableNotificationsLogs();
 
-        // Extract document names for system prompt
         var documentNames = documents.Select(d => Path.GetFileNameWithoutExtension(d.filePath)).ToList();
-        // Loaded documents silently
 
-        // Set backend-specific environment variables for keys
         switch (backendType)
         {
             case BackendType.OpenAi:
@@ -88,9 +77,6 @@ public class DocumentAssistant
                 break;
         }
 
-        // Creating AI agent silently
-
-        // Initialize unified agent
         _assistantAgent = await AIHub.Agent()
             .WithModel(modelName)
             .WithBackend(backendType)
@@ -150,21 +136,13 @@ public class DocumentAssistant
             .WithSteps(
                 StepBuilder.Instance.Answer().Build())
             .CreateAsync();
-
-        // AI agent created successfully
     }
 
-    /// <summary>
-    /// Chat with the assistant (streaming)
-    /// </summary>
     public static async IAsyncEnumerable<string> ChatAsync(string userMessage, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
     {
         if (_assistantAgent == null)
             throw new InvalidOperationException("Assistant not initialized. Call Initialize() first.");
 
-        // Received user message silently
-
-        // Add user message to conversation history
         var userMsg = new MaIN.Domain.Entities.Message
         {
             Content = userMessage,
@@ -177,10 +155,8 @@ public class DocumentAssistant
         var channel = System.Threading.Channels.Channel.CreateUnbounded<string>();
         var assistantResponse = new System.Text.StringBuilder();
 
-        // Starting AI ProcessAsync silently
-
         var processTask = _assistantAgent.ProcessAsync(
-            _conversationHistory, // Use full conversation history
+            _conversationHistory,
             tokenCallback: (token) =>
             {
                 channel.Writer.TryWrite(token.Text);
@@ -188,7 +164,6 @@ public class DocumentAssistant
             },
             toolCallback: (toolUse) =>
             {
-                // Tool callbacks handled internally
                 return Task.CompletedTask;
             }
         );
@@ -203,12 +178,10 @@ public class DocumentAssistant
             }
             else if (t.IsCanceled)
             {
-                // ProcessAsync was canceled
                 channel.Writer.Complete(new OperationCanceledException());
             }
             else
             {
-                // ProcessAsync completed successfully
                 channel.Writer.Complete();
             }
         });
@@ -221,9 +194,6 @@ public class DocumentAssistant
             yield return text;
         }
 
-        // Received tokens silently
-
-        // Add assistant response to conversation history
         if (assistantResponse.Length > 0)
         {
             _conversationHistory.Add(new MaIN.Domain.Entities.Message
@@ -236,9 +206,6 @@ public class DocumentAssistant
         }
     }
 
-    /// <summary>
-    /// Tool: Search documents semantically with automatic retry and fallback
-    /// </summary>
     private static async Task<object> SearchDocuments(SearchDocumentsArgs args)
     {
         try
@@ -246,10 +213,8 @@ public class DocumentAssistant
             if (_searchEngine == null)
                 return "Error: Search engine not initialized";
 
-            // Tool message
             LogTool($"🔍 Searching for: {args.query}...");
 
-            // Try original query first
             var results = await _searchEngine.SearchAllAsync(args.query, silent: true);
             var topResults = results.Take(args.maxResults).ToList();
 
@@ -258,7 +223,6 @@ public class DocumentAssistant
             {
                 LogTool("   No results, trying with keywords only...");
 
-                // Extract keywords (words longer than 3 chars, excluding common words)
                 var commonWords = new HashSet<string> { "the", "and", "for", "with", "that", "this", "from", "what", "how", "why", "when", "where", "which", "about" };
                 var keywords = args.query.ToLower()
                     .Split(new[] { ' ', ',', '.', '?', '!', ';', ':' }, StringSplitOptions.RemoveEmptyEntries)
@@ -267,7 +231,6 @@ public class DocumentAssistant
 
                 if (keywords.Count > 0)
                 {
-                    // Try 1: Keywords only (most important words)
                     var keywordQuery = string.Join(" ", keywords);
                     results = await _searchEngine.SearchAllAsync(keywordQuery, silent: true);
                     topResults = results.Take(args.maxResults).ToList();
@@ -276,7 +239,6 @@ public class DocumentAssistant
                     {
                         LogTool("   Still no results, trying individual keywords...");
 
-                        // Try 2: Most important keyword alone
                         var mainKeyword = keywords.OrderByDescending(k => k.Length).First();
                         results = await _searchEngine.SearchAllAsync(mainKeyword, silent: true);
                         topResults = results.Take(args.maxResults).ToList();
@@ -290,7 +252,6 @@ public class DocumentAssistant
                 return "No relevant information found in the documents after trying multiple search strategies. The information may not be in the loaded documents, or try rephrasing your question with different keywords.";
             }
 
-            // Format results as simple text to avoid serialization issues
             var resultLines = new List<string>();
             resultLines.Add($"Found {topResults.Count} relevant passage(s):\n");
 
@@ -315,18 +276,13 @@ public class DocumentAssistant
         }
     }
 
-    /// <summary>
-    /// Tool: Read complete page content
-    /// </summary>
     private static async Task<object> ReadPage(ReadPageArgs args)
     {
         if (_documents == null)
             return "Error: Documents not loaded";
 
-        // Tool message
         LogTool($"📖 Reading page {args.pageNumber} from {args.documentName}...");
 
-        // Find the document
         var doc = _documents.FirstOrDefault(d =>
             Path.GetFileNameWithoutExtension(d.filePath).Equals(args.documentName, StringComparison.OrdinalIgnoreCase));
 
@@ -338,12 +294,10 @@ public class DocumentAssistant
 
         try
         {
-            // Load the knowledge base
             var json = await File.ReadAllTextAsync(doc.kbPath);
 
             List<RawChunk> chunks;
 
-            // Try new format first (KnowledgeBase with Metadata)
             try
             {
                 var kb = JsonSerializer.Deserialize<KnowledgeBase>(json);
@@ -351,20 +305,17 @@ public class DocumentAssistant
             }
             catch (JsonException)
             {
-                // Fall back to old format (direct List<RawChunk>)
                 chunks = JsonSerializer.Deserialize<List<RawChunk>>(json) ?? new List<RawChunk>();
             }
 
             if (chunks.Count == 0)
                 return "Knowledge base is empty.";
 
-            // Find all chunks from the specified page
             var pageChunks = chunks.Where(c => c.PageNumber == args.pageNumber).ToList();
 
             if (pageChunks.Count == 0)
                 return $"Page {args.pageNumber} not found in {args.documentName}. The document may have fewer pages.";
 
-            // Combine all chunks from this page
             var pageContent = string.Join("\n", pageChunks.Select(c => c.Content));
 
             LogTool($"✓ Read {pageChunks.Count} section(s) from page {args.pageNumber}");

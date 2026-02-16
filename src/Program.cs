@@ -12,7 +12,6 @@ partial class Program
 {
     static async Task Main(string[] args)
     {
-        // Enable UTF-8 encoding for emoji support
         Console.OutputEncoding = System.Text.Encoding.UTF8;
 
         var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
@@ -22,7 +21,6 @@ partial class Program
 
         AIHub.Extensions.DisableLLamaLogs();
 
-        // Display fancy header
         AnsiConsole.Write(
             new FigletText("Antty")
                 .Centered()
@@ -31,10 +29,8 @@ partial class Program
         AnsiConsole.Write(new Rule("[dim]Semantic Search powered by MaIN.NET[/]").RuleStyle("dim"));
         AnsiConsole.WriteLine();
 
-        // Load configuration
         var config = AppConfig.Load();
 
-        // Configure providers and models (can be called again when switching)
         var (embeddingProvider, backendType, localModelName) = await ConfigureProvidersAsync(config);
 
         if (embeddingProvider == null)
@@ -45,7 +41,6 @@ partial class Program
 
         AnsiConsole.WriteLine();
 
-        // 3. Scan current directory for supported documents
         var currentDir = Directory.GetCurrentDirectory();
         var supportedExtensions = new[] { ".pdf", ".txt", ".md", ".json" };
         var availableFiles = supportedExtensions
@@ -65,7 +60,6 @@ partial class Program
         AnsiConsole.MarkupLine($"[cyan]Found {availableFiles.Count} document(s) in:[/] [dim]{currentDir}[/]");
         AnsiConsole.WriteLine();
 
-        // Check which files already have knowledge bases
         var fileChoices = availableFiles.Select(filePath =>
         {
             var fileName = Path.GetFileName(filePath);
@@ -79,7 +73,6 @@ partial class Program
             };
         }).ToList();
 
-        // Multi-select documents
         var selectedDisplayNames = AnsiConsole.Prompt(
             new MultiSelectionPrompt<string>()
                 .Title("[cyan]Select documents to load:[/]")
@@ -88,11 +81,9 @@ partial class Program
                 .InstructionsText("[grey](Press [blue]<space>[/] to toggle, [green]<enter>[/] to confirm, [yellow]ESC[/] to exit | [green]✓[/] = already indexed)[/]")
                 .AddChoices(fileChoices.Select(f => f.DisplayName)!));
 
-        // Map back to file paths (strip markup for comparison)
         var selectedPaths = selectedDisplayNames
             .Select(displayName =>
             {
-                // Remove markup to match original filename
                 var cleanName = displayName
                     .Replace(" [green]✓ (indexed)[/]", "")
                     .Trim();
@@ -107,7 +98,6 @@ partial class Program
 
         AnsiConsole.WriteLine();
 
-        // 4. Build knowledge bases if missing
         var documentsToProcess = new List<(string filePath, string kbPath)>();
         int existingKBCount = 0;
         int newKBCount = 0;
@@ -145,7 +135,6 @@ partial class Program
         AnsiConsole.Write(new Rule("[dim]Loading Documents[/]").RuleStyle("dim"));
         AnsiConsole.WriteLine();
 
-        // 5. Load all documents into multi-search engine
         var multiEngine = new MultiBookSearchEngine();
         multiEngine.LoadDocuments(embeddingProvider, documentsToProcess);
 
@@ -155,18 +144,10 @@ partial class Program
             return;
         }
 
-        // 6. Main menu loop
         bool running = true;
-
-        // Prompt to start assistant removed per user request
 
         while (running)
         {
-
-
-            // Show loaded documents info
-
-
             var choice = AnsiConsole.Prompt(
                 new SelectionPrompt<string>()
                     .Title($"[cyan]What would you like to do?[/] [dim](Embeddings: {config.EmbeddingProvider} | Model: {config.ChatBackend} - {config.ChatModel})[/]")
@@ -193,7 +174,6 @@ partial class Program
             }
             else if (choice.StartsWith("🔧"))
             {
-                // Switch embedding provider - full reconfiguration
                 AnsiConsole.WriteLine();
                 AnsiConsole.MarkupLine("[dim]Switching will reconfigure both embedding provider and AI model...[/]");
 
@@ -203,13 +183,10 @@ partial class Program
                     continue;
                 }
 
-                // Remember old provider to check if embeddings changed
                 var oldEmbeddingProvider = config.EmbeddingProvider;
 
-                // Dispose old embedding provider
                 embeddingProvider?.Dispose();
 
-                // Run full configuration again
                 var (newEmbeddingProvider, newBackendType, newLocalModelName) = await ConfigureProvidersAsync(config);
 
                 if (newEmbeddingProvider == null)
@@ -218,7 +195,6 @@ partial class Program
                     continue;
                 }
 
-                // Update configuration
                 embeddingProvider = newEmbeddingProvider;
                 backendType = newBackendType;
                 localModelName = newLocalModelName;
@@ -227,13 +203,11 @@ partial class Program
                 AnsiConsole.MarkupLine("[green]✓[/] Provider switched successfully!");
                 AnsiConsole.WriteLine();
 
-                // Check if any selected documents are missing the index for the NEW provider
                 var missingIndicesCount = config.SelectedDocuments
                     .Count(filePath => !File.Exists(AppConfig.GetKnowledgeBasePath(filePath, config.EmbeddingProvider)));
 
                 if (missingIndicesCount > 0)
                 {
-                    // Some or all indices are missing
                     AnsiConsole.MarkupLine($"[yellow]⚠[/] Embedding provider changed. {missingIndicesCount} document(s) need to be indexed for [cyan]{config.EmbeddingProvider}[/].");
                     var shouldReload = AnsiConsole.Confirm("[cyan]Index missing documents now?[/]", true);
 
@@ -272,7 +246,6 @@ partial class Program
                             AnsiConsole.MarkupLine($"[dim]✓ Used {usedCache} existing {config.EmbeddingProvider} cache(s)[/]");
                         AnsiConsole.WriteLine();
 
-                        // Reload multiEngine with new KBs
                         AnsiConsole.Write(new Rule("[dim]Reloading Documents[/]").RuleStyle("dim"));
                         AnsiConsole.WriteLine();
 
@@ -283,8 +256,6 @@ partial class Program
                     }
                     else
                     {
-                        // User chose not to re-index missing ones, but we should still reload what we have
-                        // (MultiBookSearchEngine handles missing files gracefully or we just reload old mappings)
                         AnsiConsole.MarkupLine("[dim]Skipping re-indexing. Search might not work correctly for unindexed files.[/]");
                         var partialDocuments = config.SelectedDocuments
                             .Select(filePath => (filePath, AppConfig.GetKnowledgeBasePath(filePath, config.EmbeddingProvider)))
@@ -296,7 +267,6 @@ partial class Program
                 }
                 else
                 {
-                    // All indices exist! Just reload silently or with a quick check mark
                     AnsiConsole.MarkupLine($"[green]✓[/] All documents already have indices for [cyan]{config.EmbeddingProvider}[/]. Reloading...");
 
                     var cachedDocuments = config.SelectedDocuments
@@ -308,14 +278,11 @@ partial class Program
 
                     AnsiConsole.MarkupLine($"[green]✓[/] Loaded {multiEngine.LoadedDocumentCount} document(s)");
                 }
-
-                // Prompt to start assistant removed per user request
             }
             else if (choice.StartsWith("📚"))
             {
                 AnsiConsole.MarkupLine("[yellow]Restarting to select documents...[/]");
                 AnsiConsole.WriteLine();
-                // Restart the application by returning and letting Main run again
                 return;
             }
             else if (choice.StartsWith("⚙"))
@@ -379,7 +346,6 @@ partial class Program
                         ? hit.Text.Substring(0, 147) + "..."
                         : hit.Text;
 
-                    // Escape markup characters to prevent parsing errors
                     var escapedBookSource = Markup.Escape(hit.BookSource);
                     var escapedText = Markup.Escape(truncatedText);
 
@@ -402,8 +368,6 @@ partial class Program
     {
         AnsiConsole.Write(new Rule("[bold cyan]💬 TALK TO ASSISTANT[/]").RuleStyle("cyan"));
         AnsiConsole.WriteLine();
-
-        // Initialize the assistant
 
         try
         {
@@ -438,17 +402,14 @@ partial class Program
 
             void DisplayToolLog(string msg)
             {
-                // Strip all residual [tags] to prevent literal markup visibility
                 var clean = System.Text.RegularExpressions.Regex.Replace(msg, @"\[.*?\]", "");
                 clean = clean.Trim();
 
-                // Display as compact steel blue italic text with left accent bar and spacing
                 AnsiConsole.MarkupLine($"  [steelblue1 italic]│ {clean.EscapeMarkup()}[/]");
             }
 
             try
             {
-                // 1. Initial Header
                 AnsiConsole.Write(new Rule("[green]Assistant[/]").LeftJustified());
                 AnsiConsole.WriteLine();
 
@@ -458,7 +419,6 @@ partial class Program
                     firstContentSignal.TrySetResult(true);
                 };
 
-                // 2. Continuous Thinking - Keep spinner active until visible output appears
                 bool hasNext = false;
                 bool currentTokenAppended = false;
 
@@ -473,7 +433,6 @@ partial class Program
 
                             currentTokenAppended = false;
 
-                            // Exit early if printer flushed a line or tool was called
                             if (firstContentSignal.Task.IsCompleted)
                                 break;
 
@@ -485,7 +444,6 @@ partial class Program
                         }
                     });
 
-                // 3. Process remaining turn sequentially
                 try
                 {
                     while (true)
@@ -535,7 +493,6 @@ partial class Program
 
         if (choice.StartsWith("🔑"))
         {
-            // Let user select which provider's key to update
             var providerChoice = AnsiConsole.Prompt(
                 new SelectionPrompt<string>()
                     .Title("[cyan]Select provider to update API key:[/]")
@@ -561,7 +518,6 @@ partial class Program
                     .PromptStyle("green")
                     .Secret());
 
-            // Update the appropriate key field
             switch (providerChoice)
             {
                 case "OpenAI":
@@ -675,14 +631,6 @@ partial class Program
     }
 
     /// <summary>
-    /// Configure embedding provider and AI model (reusable for initial setup and mid-session switching)
-    /// </summary>
-    /// <returns>Tuple of (embeddingProvider, useLocalAI, localModelName)</returns>
-    /// <summary>
-    /// Configure embedding provider and AI model (Chat Backend)
-    /// </summary>
-    /// <returns>Tuple of (embeddingProvider, backendType, modelName)</returns>
-    /// <summary>
     /// Configure embedding provider and AI model (Chat Backend)
     /// </summary>
     /// <returns>Tuple of (embeddingProvider, backendType, modelName)</returns>
@@ -707,11 +655,9 @@ partial class Program
 
         if (isLocalMode)
         {
-            // --- LOCAL MODE ---
             AnsiConsole.MarkupLine("[dim]Configuring for fully offline use...[/]");
             config.EmbeddingProvider = "ollama";
 
-            // 1. Ensure Ollama is ready
             backendType = BackendType.Ollama;
             if (!await OllamaManager.EnsureOllamaReadyAsync())
             {
@@ -719,7 +665,6 @@ partial class Program
                 return (null, backendType, "");
             }
 
-            // 2. Setup Ollama Embeddings (nomic-embed-text)
             const string embeddingModel = "nomic-embed-text";
             if (!await OllamaManager.IsModelInstalledAsync(embeddingModel))
             {
@@ -738,20 +683,16 @@ partial class Program
                     return (null, backendType, "");
                 }
             }
-            // Using Ollama embeddings silently
             AnsiConsole.WriteLine();
 
-            // 3. Setup Local Chat Model
             modelName = await ConfigureOllamaModelAsync(config);
             if (string.IsNullOrEmpty(modelName)) return (null, backendType, "");
         }
         else
         {
-            // --- CLOUD MODE ---
             AnsiConsole.MarkupLine("[dim]Configuring for cloud-powered performance...[/]");
             config.EmbeddingProvider = "openai";
 
-            // 1. Setup OpenAI Key (Required for Embeddings)
             if (string.IsNullOrWhiteSpace(config.ApiKey) || config.ApiKey.StartsWith("sk-YOUR"))
             {
                 config.ApiKey = AnsiConsole.Prompt(
@@ -760,7 +701,6 @@ partial class Program
                         .Secret());
             }
 
-            // 2. Choose Chat Provider
             var cloudProvider = AnsiConsole.Prompt(
                  new SelectionPrompt<string>()
                      .Title("[cyan]Select Chat Provider:[/]")
@@ -857,7 +797,6 @@ partial class Program
         config.Save();
         AnsiConsole.WriteLine();
 
-        // Create embedding provider
         var embeddingProvider = isLocalMode
             ? (Antty.Embedding.IEmbeddingProvider)new Antty.Embedding.OllamaEmbeddingProvider("nomic-embed-text")
             : new Antty.Embedding.OpenAIEmbeddingProvider(config.ApiKey);
@@ -903,7 +842,11 @@ partial class Program
             else modelName = "llama3.1:8b";
         }
 
-        if (!await OllamaManager.IsModelInstalledAsync(modelName))
+        if (await OllamaManager.IsModelInstalledAsync(modelName))
+        {
+            AnsiConsole.MarkupLine("[green]✓[/] Model already downloaded.");
+        }
+        else
         {
             AnsiConsole.MarkupLine($"[yellow]Model {modelName} not found locally.[/]");
             if (AnsiConsole.Confirm($"Download {modelName}?"))
