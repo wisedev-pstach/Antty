@@ -1,4 +1,4 @@
-﻿using Antty.Configuration;
+using Antty.Configuration;
 using Antty.Core;
 using Antty.Embedding;
 using Antty.Helpers;
@@ -26,6 +26,10 @@ AnsiConsole.Write(new Rule("[dim]Semantic Search powered by MaIN.NET[/]").RuleSt
 AnsiConsole.WriteLine();
 
 var config = AppConfig.Load();
+
+// Start update check in background — it'll be ready by the time the menu appears
+var updateCheckTask = UpdateService.CheckForUpdateAsync();
+
 var providerService = new ProviderConfigurationService();
 var settingsService = new SettingsService();
 var searchService = new DocumentSearchService();
@@ -57,6 +61,15 @@ if (multiEngine.LoadedDocumentCount == 0)
     return;
 }
 
+// Collect update result — should already be done by now
+var updateVersion = await updateCheckTask;
+
+if (updateVersion is not null)
+{
+    AnsiConsole.MarkupLine($"[yellow]⚡ Update available:[/] [cyan]{updateVersion}[/] [dim](current: {UpdateService.CurrentVersion})[/]");
+    AnsiConsole.WriteLine();
+}
+
 bool running = true;
 
 while (running)
@@ -66,7 +79,7 @@ while (running)
             .Title($"[cyan]What would you like to do?[/] [dim](Embeddings: {config.EmbeddingProvider} | Model: {config.ChatBackend} - {config.ChatModel})[/]")
             .PageSize(10)
             .MoreChoicesText("[grey](Move with ↑↓, select with [green]Enter[/], [yellow]ESC[/] or [red]❌ Exit[/] to quit)[/]")
-            .AddChoices(MenuChoiceExtensions.GetDisplayChoices()));
+            .AddChoices(MenuChoiceExtensions.GetDisplayChoices(updateVersion)));
 
     var choice = MenuChoiceExtensions.Parse(choiceText);
 
@@ -79,6 +92,7 @@ while (running)
         MenuChoice.SwitchProvider => HandleProviderSwitchAsync(),
         MenuChoice.ReloadDocuments => HandleDocumentReloadAsync(),
         MenuChoice.Settings => settingsService.ShowSettingsMenuAsync(config),
+        MenuChoice.Update => HandleUpdateAsync(),
         MenuChoice.Exit => Task.Run(() => running = false),
         _ => throw new ArgumentOutOfRangeException()
     });
@@ -92,6 +106,15 @@ Task HandleDocumentReloadAsync()
     AnsiConsole.MarkupLine("[yellow]Restarting to select documents...[/]");
     AnsiConsole.WriteLine();
     running = false;
+    return Task.CompletedTask;
+}
+
+Task HandleUpdateAsync()
+{
+    AnsiConsole.MarkupLine($"[cyan]Updating Antty to {updateVersion}...[/]");
+    AnsiConsole.MarkupLine("[dim]The installer will open in a new window. This window will close.[/]");
+    AnsiConsole.WriteLine();
+    UpdateService.PerformUpdate();
     return Task.CompletedTask;
 }
 

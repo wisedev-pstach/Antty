@@ -7,17 +7,30 @@ namespace Antty.Helpers;
 
 public static class DocumentManager
 {
+    private const string SelectAllCurrentSentinel = "  [bold]Select All[/] [dim](current folder)[/]";
+    private const string SelectAllRecursiveSentinel = "  [bold]Select All[/] [dim](including subdirectories)[/]";
+
     public static async Task<List<(string filePath, string kbPath)>?> SelectAndLoadDocumentsAsync(
         AppConfig config,
         Embedding.IEmbeddingProvider embeddingProvider)
     {
         var currentDir = Directory.GetCurrentDirectory();
         var supportedExtensions = new[] { ".pdf", ".txt", ".md", ".json" };
-        var availableFiles = supportedExtensions
+
+        var currentDirFiles = supportedExtensions
             .SelectMany(ext => Directory.GetFiles(currentDir, $"*{ext}"))
+            .OrderBy(f => f)
             .ToList();
 
-        if (availableFiles.Count == 0)
+        var subDirFiles = supportedExtensions
+            .SelectMany(ext => Directory.GetFiles(currentDir, $"*{ext}", SearchOption.AllDirectories))
+            .Except(currentDirFiles)
+            .OrderBy(f => f)
+            .ToList();
+
+        var allFiles = currentDirFiles.Concat(subDirFiles).ToList();
+
+        if (allFiles.Count == 0)
         {
             AnsiConsole.MarkupLine($"[yellow]⚠ No supported documents found in:[/] [dim]{currentDir}[/]");
             AnsiConsole.MarkupLine("[dim]Supported formats: PDF, TXT, MD, JSON[/]");
@@ -27,39 +40,58 @@ public static class DocumentManager
             return null;
         }
 
-        AnsiConsole.MarkupLine($"[cyan]Found {availableFiles.Count} document(s) in:[/] [dim]{currentDir}[/]");
+        if (subDirFiles.Count > 0)
+            AnsiConsole.MarkupLine($"[cyan]Found {currentDirFiles.Count} document(s) in current folder[/] [dim]and {subDirFiles.Count} in subdirectories[/]");
+        else
+            AnsiConsole.MarkupLine($"[cyan]Found {currentDirFiles.Count} document(s) in:[/] [dim]{currentDir}[/]");
+
         AnsiConsole.WriteLine();
 
-        var fileChoices = availableFiles.Select(filePath =>
+        // Build display name → file path map
+        var choiceMap = new Dictionary<string, string>();
+
+        string MakeDisplayName(string filePath, bool useRelativePath)
         {
-            var fileName = Path.GetFileName(filePath);
-            var kbPath = AppConfig.GetKnowledgeBasePath(filePath, config.EmbeddingProvider);
-            var hasKB = File.Exists(kbPath);
-            return new
-            {
-                FilePath = filePath,
-                DisplayName = hasKB ? $"{fileName} [green]✓ (indexed)[/]" : fileName,
-                HasKB = hasKB
-            };
-        }).ToList();
+            var name = useRelativePath
+                ? Path.GetRelativePath(currentDir, filePath)
+                : Path.GetFileName(filePath);
+            var hasKB = File.Exists(AppConfig.GetKnowledgeBasePath(filePath, config.EmbeddingProvider));
+            var display = hasKB ? $"{name} [green]✓ (indexed)[/]" : name;
+            choiceMap[display] = filePath;
+            return display;
+        }
+
+        var choices = new List<string>();
+
+        choices.Add(SelectAllCurrentSentinel);
+        if (subDirFiles.Count > 0)
+            choices.Add(SelectAllRecursiveSentinel);
+
+        foreach (var f in currentDirFiles)
+            choices.Add(MakeDisplayName(f, false));
+
+        foreach (var f in subDirFiles)
+            choices.Add(MakeDisplayName(f, true));
 
         var selectedDisplayNames = AnsiConsole.Prompt(
             new MultiSelectionPrompt<string>()
                 .Title("[cyan]Select documents to load:[/]")
-                .PageSize(15)
+                .PageSize(20)
                 .Required()
                 .InstructionsText("[grey](Press [blue]<space>[/] to toggle, [green]<enter>[/] to confirm, [yellow]ESC[/] to exit | [green]✓[/] = already indexed)[/]")
-                .AddChoices(fileChoices.Select(f => f.DisplayName)!));
+                .AddChoices(choices));
 
-        var selectedPaths = selectedDisplayNames
-            .Select(displayName =>
-            {
-                var cleanName = displayName.Replace(" [green]✓ (indexed)[/]", "").Trim();
-                return fileChoices.FirstOrDefault(f => Path.GetFileName(f.FilePath) == cleanName)?.FilePath;
-            })
-            .Where(path => path != null)
-            .Select(path => path!)
-            .ToList();
+        List<string> selectedPaths;
+
+        if (selectedDisplayNames.Contains(SelectAllRecursiveSentinel))
+            selectedPaths = allFiles;
+        else if (selectedDisplayNames.Contains(SelectAllCurrentSentinel))
+            selectedPaths = currentDirFiles;
+        else
+            selectedPaths = selectedDisplayNames
+                .Where(d => choiceMap.ContainsKey(d))
+                .Select(d => choiceMap[d])
+                .ToList();
 
         config.SelectedDocuments = selectedPaths;
         config.Save();
