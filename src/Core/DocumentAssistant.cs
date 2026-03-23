@@ -63,7 +63,6 @@ public class DocumentAssistant
 
         _assistantAgent = await AIHub.Agent()
             .WithModel(modelName)
-            .WithBackend(backendType)
             .WithKnowledge(KnowledgeBuilder.Instance.DisablePersistence())
             .WithInitialPrompt(GetSystemPrompt(documentNames))
             .WithTools(new ToolsConfigurationBuilder()
