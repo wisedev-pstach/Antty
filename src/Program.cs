@@ -22,7 +22,7 @@ serviceProvider.UseMaIN();
 AIHub.Extensions.DisableLLamaLogs();
 
 AnsiConsole.Write(new FigletText("Antty").Centered().Color(Color.Cyan1));
-AnsiConsole.Write(new Rule("[dim]Semantic Search powered by MaIN.NET[/]").RuleStyle("dim"));
+AnsiConsole.Write(new Rule($"[dim]Semantic Search powered by MaIN.NET · v{UpdateService.CurrentVersion}[/]").RuleStyle("dim"));
 AnsiConsole.WriteLine();
 
 var config = AppConfig.Load();

@@ -110,3 +110,4 @@ publish/
 test.txt
 test-antty.bat
 
+.claude/settings.local.json
