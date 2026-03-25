@@ -45,34 +45,29 @@ public class DocumentAssistant
         {
             case BackendType.OpenAi:
                 Environment.SetEnvironmentVariable("OPENAI_API_KEY", config.ApiKey);
-                ModelRegistry.Register(new GenericCloudModel(modelName, backendType));
                 break;
             case BackendType.Anthropic:
                 Environment.SetEnvironmentVariable("ANTHROPIC_API_KEY", config.AnthropicKey);
-                ModelRegistry.Register(new GenericCloudModel(modelName, backendType));
                 break;
             case BackendType.Gemini:
                 Environment.SetEnvironmentVariable("GEMINI_API_KEY", config.GeminiKey);
-                ModelRegistry.Register(new GenericCloudModel(modelName, backendType));
                 break;
             case BackendType.DeepSeek:
                 Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", config.DeepSeekKey);
-                ModelRegistry.Register(new GenericCloudModel(modelName, backendType));
                 break;
             case BackendType.GroqCloud:
                 Environment.SetEnvironmentVariable("GROQ_API_KEY", config.GroqKey);
-                ModelRegistry.Register(new GenericCloudModel(modelName, backendType));
                 break;
             case BackendType.Xai:
                 Environment.SetEnvironmentVariable("XAI_API_KEY", config.XaiKey);
-                ModelRegistry.Register(new GenericCloudModel(modelName, backendType));
-                break;
-            case BackendType.Ollama:
-                ModelRegistry.Register(new GenericCloudModel(modelName, backendType));
                 break;
         }
-        
 
+        if (!ModelRegistry.Exists(modelName))
+        {
+            ModelRegistry.Register(new GenericCloudModel(modelName, backendType));
+        }
+        
         _assistantAgent = await AIHub.Agent()
             .WithModel(modelName)
             .WithKnowledge(KnowledgeBuilder.Instance.DisablePersistence())

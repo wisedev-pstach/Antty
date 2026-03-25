@@ -220,12 +220,11 @@ public class ProviderConfigurationService : IProviderConfigurationService
                 choices.Add($"      {display} ({modelId})");
         }
 
-        AddIfInstalled("Phi 4 Mini (Tool Support)", "phi4-mini");
-        AddIfInstalled("Llama 3.1 8B", "llama3.1:8b");
-        AddIfInstalled("Llama 3.3 70B", "llama3.3:70b");
-        AddIfInstalled("Qwen 2.5 Coder 7B", "qwen2.5-coder:7b");
+        AddIfInstalled("Granite4 3b", "Granite4:3b");
+        AddIfInstalled("Llama3.1 8B", "llama3.1:8b");
+        AddIfInstalled("Qwen3 14b", "Qwen3:14b");
 
-        if (config.CustomOllamaModels != null && config.CustomOllamaModels.Any())
+        if (config.CustomOllamaModels.Any())
         {
             foreach (var customModel in config.CustomOllamaModels)
             {
@@ -250,9 +249,6 @@ public class ProviderConfigurationService : IProviderConfigurationService
             var customModelName = AnsiConsole.Prompt(
                 new TextPrompt<string>("[cyan]Enter Ollama Model Name:[/]")
                     .Validate(s => !string.IsNullOrWhiteSpace(s)));
-
-            if (config.CustomOllamaModels == null)
-                config.CustomOllamaModels = new List<string>();
 
             if (!config.CustomOllamaModels.Contains(customModelName))
             {
