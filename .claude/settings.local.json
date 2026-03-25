@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(curl -s https://api.nuget.org/v3-flatcontainer/main.net/index.json)",
-      "Bash(curl -s https://api.nuget.org/v3-flatcontainer/uglytoad.pdfpig/index.json)"
+      "Bash(curl -s https://api.nuget.org/v3-flatcontainer/uglytoad.pdfpig/index.json)",
+      "Bash(dotnet build:*)"
     ]
   }
 }

@@ -22,13 +22,23 @@ serviceProvider.UseMaIN();
 AIHub.Extensions.DisableLLamaLogs();
 
 AnsiConsole.Write(new FigletText("Antty").Centered().Color(Color.Cyan1));
-AnsiConsole.Write(new Rule($"[dim]Semantic Search powered by MaIN.NET · v{UpdateService.CurrentVersion}[/]").RuleStyle("dim"));
-AnsiConsole.WriteLine();
 
 var config = AppConfig.Load();
 
-// Start update check in background — it'll be ready by the time the menu appears
+// Start update check — runs in background during provider/doc setup
 var updateCheckTask = UpdateService.CheckForUpdateAsync();
+
+// Show version + update status in header (wait max 1.5s to not delay startup)
+var earlyUpdate = await Task.WhenAny(updateCheckTask, Task.Delay(1500)) == updateCheckTask
+    ? await updateCheckTask
+    : null;
+
+var headerStatus = earlyUpdate is not null
+    ? $"[dim]v{UpdateService.CurrentVersion}[/] [yellow]· ⚡ v{earlyUpdate} available[/]"
+    : $"[dim]Semantic Search powered by MaIN.NET · v{UpdateService.CurrentVersion}[/]";
+
+AnsiConsole.Write(new Rule(headerStatus).RuleStyle("dim"));
+AnsiConsole.WriteLine();
 
 var providerService = new ProviderConfigurationService();
 var settingsService = new SettingsService();
@@ -61,18 +71,14 @@ if (multiEngine.LoadedDocumentCount == 0)
     return;
 }
 
-// Collect update result — should already be done by now
-var updateVersion = await updateCheckTask;
+// Final update result (in case header check hadn't finished in time)
+var updateVersion = earlyUpdate ?? await updateCheckTask;
 
 if (updateVersion is not null)
 {
-    AnsiConsole.MarkupLine($"[yellow]⚡ Update available:[/] [cyan]{updateVersion}[/] [dim](current: {UpdateService.CurrentVersion})[/]");
+    AnsiConsole.MarkupLine($"[yellow]⚡ Update available:[/] [bold cyan]v{updateVersion}[/] [dim](current: v{UpdateService.CurrentVersion})[/]");
+    AnsiConsole.WriteLine();
 }
-else
-{
-    AnsiConsole.MarkupLine($"[dim]✓ v{UpdateService.CurrentVersion} — up to date[/]");
-}
-AnsiConsole.WriteLine();
 
 bool running = true;
 
