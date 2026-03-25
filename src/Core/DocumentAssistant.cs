@@ -8,6 +8,8 @@ using Spectre.Console;
 using System.Text.Json;
 using MaIN.Core.Hub.Contexts.Interfaces.AgentContext;
 using MaIN.Domain.Entities;
+using MaIN.Domain.Models.Abstract;
+using MaIN.Domain.Models.Concrete;
 using MaIN.Services.Services;
 
 namespace Antty.Core;
@@ -43,23 +45,33 @@ public class DocumentAssistant
         {
             case BackendType.OpenAi:
                 Environment.SetEnvironmentVariable("OPENAI_API_KEY", config.ApiKey);
+                ModelRegistry.Register(new GenericCloudModel(modelName, backendType));
                 break;
             case BackendType.Anthropic:
                 Environment.SetEnvironmentVariable("ANTHROPIC_API_KEY", config.AnthropicKey);
+                ModelRegistry.Register(new GenericCloudModel(modelName, backendType));
                 break;
             case BackendType.Gemini:
                 Environment.SetEnvironmentVariable("GEMINI_API_KEY", config.GeminiKey);
+                ModelRegistry.Register(new GenericCloudModel(modelName, backendType));
                 break;
             case BackendType.DeepSeek:
                 Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", config.DeepSeekKey);
+                ModelRegistry.Register(new GenericCloudModel(modelName, backendType));
                 break;
             case BackendType.GroqCloud:
                 Environment.SetEnvironmentVariable("GROQ_API_KEY", config.GroqKey);
+                ModelRegistry.Register(new GenericCloudModel(modelName, backendType));
                 break;
             case BackendType.Xai:
                 Environment.SetEnvironmentVariable("XAI_API_KEY", config.XaiKey);
+                ModelRegistry.Register(new GenericCloudModel(modelName, backendType));
+                break;
+            case BackendType.Ollama:
+                ModelRegistry.Register(new GenericCloudModel(modelName, backendType));
                 break;
         }
+        
 
         _assistantAgent = await AIHub.Agent()
             .WithModel(modelName)
@@ -126,7 +138,7 @@ public class DocumentAssistant
         if (_assistantAgent == null)
             throw new InvalidOperationException("Assistant not initialized. Call Initialize() first.");
 
-        var userMsg = new MaIN.Domain.Entities.Message
+        var userMsg = new Message
         {
             Content = userMessage,
             Role = "user",
@@ -145,11 +157,7 @@ public class DocumentAssistant
                 channel.Writer.TryWrite(token.Text);
                 return Task.CompletedTask;
             },
-            toolCallback: (toolUse) =>
-            {
-                return Task.CompletedTask;
-            }
-        );
+            toolCallback: (toolUse) => Task.CompletedTask);
 
         _ = processTask.ContinueWith(t =>
         {

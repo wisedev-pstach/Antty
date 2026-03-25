@@ -45,7 +45,9 @@ public class AssistantChatService : IAssistantChatService
             var firstContentSignal = new TaskCompletionSource<bool>();
             var printer = new StreamingMarkdownPrinter(() => firstContentSignal.TrySetResult(true));
             using var cts = new CancellationTokenSource();
-            var responseEnumeration = DocumentAssistant.ChatAsync(userMessage, cts.Token).GetAsyncEnumerator();
+            var responseEnumeration = DocumentAssistant
+                .ChatAsync(userMessage, cts.Token)
+                .GetAsyncEnumerator(cts.Token);
 
             void DisplayToolLog(string msg)
             {
