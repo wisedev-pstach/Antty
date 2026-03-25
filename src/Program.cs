@@ -35,7 +35,7 @@ var earlyUpdate = await Task.WhenAny(updateCheckTask, Task.Delay(1500)) == updat
 
 var headerStatus = earlyUpdate is not null
     ? $"[dim]v{UpdateService.CurrentVersion}[/] [yellow]· ⚡ v{earlyUpdate} available[/]"
-    : $"[dim]Semantic Search powered by MaIN.NET · v{UpdateService.CurrentVersion}[/]";
+    : $"[dim]Semantic Search powered by MaIN.NET · v{UpdateService.CurrentVersion} · ✓ up to date[/]";
 
 AnsiConsole.Write(new Rule(headerStatus).RuleStyle("dim"));
 AnsiConsole.WriteLine();
