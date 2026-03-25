@@ -7,16 +7,24 @@ public class SettingsService : ISettingsService
 {
     public async Task ShowSettingsMenuAsync(AppConfig config)
     {
-        var choice = AnsiConsole.Prompt(
-            new SelectionPrompt<string>()
-                .Title("[cyan]Settings[/]")
-                .MoreChoicesText("[grey]([yellow]ESC[/] or select [cyan]🔙 Back[/] to return)[/]")
-                .AddChoices(new[] {
-                    "🔑 Update API Key",
-                    "📂 Show Loaded Documents",
-                    "🗑️  Clear Knowledge Base Cache",
-                    "🔙 Back"
-                }));
+        string choice;
+        try
+        {
+            choice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[cyan]Settings[/]")
+                    .MoreChoicesText("[grey](Select [cyan]🔙 Back[/] or press [yellow]ESC[/] to return)[/]")
+                    .AddChoices(new[] {
+                        "🔑 Update API Key",
+                        "📂 Show Loaded Documents",
+                        "🗑️  Clear Knowledge Base Cache",
+                        "🔙 Back"
+                    }));
+        }
+        catch
+        {
+            return; // ESC pressed
+        }
 
         if (choice.StartsWith("🔑"))
         {
@@ -34,20 +42,28 @@ public class SettingsService : ISettingsService
 
     private async Task UpdateApiKeyAsync(AppConfig config)
     {
-        var providerChoice = AnsiConsole.Prompt(
-            new SelectionPrompt<string>()
-                .Title("[cyan]Select provider to update API key:[/]")
-                .PageSize(10)
-                .MoreChoicesText("[grey]([yellow]ESC[/] or select [cyan]🔙 Cancel[/] to return)[/]")
-                .AddChoices(new[] {
-                    "OpenAI",
-                    "Anthropic",
-                    "Google Gemini",
-                    "DeepSeek",
-                    "XAI (Grok)",
-                    "Groq",
-                    "🔙 Cancel"
-                }));
+        string providerChoice;
+        try
+        {
+            providerChoice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[cyan]Select provider to update API key:[/]")
+                    .PageSize(10)
+                    .MoreChoicesText("[grey](Select [cyan]🔙 Cancel[/] or press [yellow]ESC[/] to return)[/]")
+                    .AddChoices(new[] {
+                        "OpenAI",
+                        "Anthropic",
+                        "Google Gemini",
+                        "DeepSeek",
+                        "XAI (Grok)",
+                        "Groq",
+                        "🔙 Cancel"
+                    }));
+        }
+        catch
+        {
+            return; // ESC pressed
+        }
 
         if (providerChoice == "🔙 Cancel")
         {

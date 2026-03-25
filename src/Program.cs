@@ -67,19 +67,31 @@ var updateVersion = await updateCheckTask;
 if (updateVersion is not null)
 {
     AnsiConsole.MarkupLine($"[yellow]⚡ Update available:[/] [cyan]{updateVersion}[/] [dim](current: {UpdateService.CurrentVersion})[/]");
-    AnsiConsole.WriteLine();
 }
+else
+{
+    AnsiConsole.MarkupLine($"[dim]✓ v{UpdateService.CurrentVersion} — up to date[/]");
+}
+AnsiConsole.WriteLine();
 
 bool running = true;
 
 while (running)
 {
-    var choiceText = AnsiConsole.Prompt(
-        new SelectionPrompt<string>()
-            .Title($"[cyan]What would you like to do?[/] [dim](Embeddings: {config.EmbeddingProvider} | Model: {config.ChatBackend} - {config.ChatModel})[/]")
-            .PageSize(10)
-            .MoreChoicesText("[grey](Move with ↑↓, select with [green]Enter[/], [yellow]ESC[/] or [red]❌ Exit[/] to quit)[/]")
-            .AddChoices(MenuChoiceExtensions.GetDisplayChoices(updateVersion)));
+    string choiceText;
+    try
+    {
+        choiceText = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title($"[cyan]What would you like to do?[/] [dim](Embeddings: {config.EmbeddingProvider} | Model: {config.ChatBackend} - {config.ChatModel})[/]")
+                .PageSize(10)
+                .MoreChoicesText("[grey](Move with ↑↓, select with [green]Enter[/], [red]❌ Exit[/] to quit)[/]")
+                .AddChoices(MenuChoiceExtensions.GetDisplayChoices(updateVersion)));
+    }
+    catch
+    {
+        break; // ESC pressed
+    }
 
     var choice = MenuChoiceExtensions.Parse(choiceText);
 

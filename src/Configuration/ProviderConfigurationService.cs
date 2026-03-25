@@ -14,15 +14,23 @@ public class ProviderConfigurationService : IProviderConfigurationService
         AnsiConsole.Write(new Rule("[bold cyan]🤖 ASSISTANT CONFIGURATION[/]").RuleStyle("cyan"));
         AnsiConsole.WriteLine();
 
-        var modeChoice = AnsiConsole.Prompt(
-            new SelectionPrompt<string>()
-                .Title("[cyan]Choose Operating Mode:[/]")
-                .PageSize(10)
-                .MoreChoicesText("[grey]([yellow]ESC[/] to keep current settings)[/]")
-                .AddChoices(new[] {
-                    "💻 Local (Offline) - Ollama + Ollama Embeddings",
-                    "☁️  Cloud (Online) - Cloud Models + OpenAI Embeddings"
-                }));
+        string modeChoice;
+        try
+        {
+            modeChoice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[cyan]Choose Operating Mode:[/]")
+                    .PageSize(10)
+                    .MoreChoicesText("[grey](Press [yellow]ESC[/] to keep current settings)[/]")
+                    .AddChoices(new[] {
+                        "💻 Local (Offline) - Ollama + Ollama Embeddings",
+                        "☁️  Cloud (Online) - Cloud Models + OpenAI Embeddings"
+                    }));
+        }
+        catch
+        {
+            return (null, default, ""); // ESC → cancel
+        }
 
         bool isLocalMode = modeChoice.StartsWith("💻");
 
@@ -99,19 +107,27 @@ public class ProviderConfigurationService : IProviderConfigurationService
                     .Secret());
         }
 
-        var cloudProvider = AnsiConsole.Prompt(
-             new SelectionPrompt<string>()
-                 .Title("[cyan]Select Chat Provider:[/]")
-                 .PageSize(10)
-                 .MoreChoicesText("[grey]([yellow]ESC[/] to go back)[/]")
-                 .AddChoices(new[] {
-                     "OpenAI",
-                     "Anthropic",
-                     "Google Gemini",
-                     "DeepSeek",
-                     "XAI (Grok)",
-                     "Groq"
-                 }));
+        string cloudProvider;
+        try
+        {
+            cloudProvider = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[cyan]Select Chat Provider:[/]")
+                    .PageSize(10)
+                    .MoreChoicesText("[grey](Press [yellow]ESC[/] to go back)[/]")
+                    .AddChoices(new[] {
+                        "OpenAI",
+                        "Anthropic",
+                        "Google Gemini",
+                        "DeepSeek",
+                        "XAI (Grok)",
+                        "Groq"
+                    }));
+        }
+        catch
+        {
+            return (null, default, ""); // ESC → cancel
+        }
 
         string PromptKey(string name, string current)
         {
@@ -123,7 +139,15 @@ public class ProviderConfigurationService : IProviderConfigurationService
         {
             var choices = options.Keys.ToList();
             choices.Add("⌨️  Enter custom model ID...");
-            var res = AnsiConsole.Prompt(new SelectionPrompt<string>().Title("[cyan]Select Model:[/]").AddChoices(choices));
+            string res;
+            try
+            {
+                res = AnsiConsole.Prompt(new SelectionPrompt<string>().Title("[cyan]Select Model:[/]").AddChoices(choices));
+            }
+            catch
+            {
+                throw new OperationCanceledException(); // propagate ESC up
+            }
             if (res.Contains("Enter custom")) return AnsiConsole.Prompt(new TextPrompt<string>("[cyan]Enter Model ID:[/]").Validate(s => !string.IsNullOrWhiteSpace(s)));
             return options[res];
         }
@@ -131,69 +155,76 @@ public class ProviderConfigurationService : IProviderConfigurationService
         BackendType backendType;
         string modelName;
 
-        if (cloudProvider == "OpenAI")
+        try
         {
-            backendType = BackendType.OpenAi;
-            modelName = SelectModel(new Dictionary<string, string> {
-                { "GPT-5.2 (Flagship)", "gpt-5.2" },
-                { "o3 (Reasoning)", "o3" },
-                { "GPT-5 Nano (Light)", "gpt-5-nano" },
-                { "GPT-4o (Omni)", "gpt-4o" },
-                { "o1 (Preview)", "o1" }
-            });
+            if (cloudProvider == "OpenAI")
+            {
+                backendType = BackendType.OpenAi;
+                modelName = SelectModel(new Dictionary<string, string> {
+                    { "GPT-5.2 (Flagship)", "gpt-5.2" },
+                    { "o3 (Reasoning)", "o3" },
+                    { "GPT-5 Nano (Light)", "gpt-5-nano" },
+                    { "GPT-4o (Omni)", "gpt-4o" },
+                    { "o1 (Preview)", "o1" }
+                });
+            }
+            else if (cloudProvider == "Anthropic")
+            {
+                backendType = BackendType.Anthropic;
+                config.AnthropicKey = PromptKey("Anthropic", config.AnthropicKey);
+                modelName = SelectModel(new Dictionary<string, string> {
+                    { "Claude 4.5 Sonnet", "claude-sonnet-4-5-20250929" },
+                    { "Claude 4.5 Haiku", "claude-haiku-4-5-20251001" },
+                    { "Claude 4.5 Opus", "claude-opus-4-5-20251101" },
+                    { "Claude 3.7 Sonnet", "claude-3-7-sonnet" }
+                });
+            }
+            else if (cloudProvider == "Google Gemini")
+            {
+                backendType = BackendType.Gemini;
+                config.GeminiKey = PromptKey("Google Gemini", config.GeminiKey);
+                modelName = SelectModel(new Dictionary<string, string> {
+                    { "Gemini 3.0 Pro", "gemini-3.0-pro-preview" },
+                    { "Gemini 2.5 Pro", "gemini-2.5-pro" },
+                    { "Gemini 2.5 Flash", "gemini-2.5-flash" }
+                });
+            }
+            else if (cloudProvider == "DeepSeek")
+            {
+                backendType = BackendType.DeepSeek;
+                config.DeepSeekKey = PromptKey("DeepSeek", config.DeepSeekKey);
+                modelName = SelectModel(new Dictionary<string, string> {
+                    { "DeepSeek R1 (Reasoner)", "deepseek-reasoner" },
+                    { "DeepSeek V3 (Chat)", "deepseek-chat" }
+                });
+            }
+            else if (cloudProvider == "XAI (Grok)")
+            {
+                backendType = BackendType.Xai;
+                config.XaiKey = PromptKey("XAI (Grok)", config.XaiKey);
+                modelName = SelectModel(new Dictionary<string, string> {
+                    { "Grok-3", "grok-3" },
+                    { "Grok-2", "grok-2-1212" }
+                });
+            }
+            else if (cloudProvider == "Groq")
+            {
+                backendType = BackendType.GroqCloud;
+                config.GroqKey = PromptKey("Groq", config.GroqKey);
+                modelName = SelectModel(new Dictionary<string, string> {
+                    { "Llama 3.3 70B", "llama-3.3-70b-versatile" },
+                    { "Llama 3.1 8B", "llama-3.1-8b-instant" },
+                    { "Mixtral 8x7B", "mixtral-8x7b-32768" }
+                });
+            }
+            else
+            {
+                return (null, BackendType.Ollama, "");
+            }
         }
-        else if (cloudProvider == "Anthropic")
+        catch (OperationCanceledException)
         {
-            backendType = BackendType.Anthropic;
-            config.AnthropicKey = PromptKey("Anthropic", config.AnthropicKey);
-            modelName = SelectModel(new Dictionary<string, string> {
-                { "Claude 4.5 Sonnet", "claude-sonnet-4-5-20250929" },
-                { "Claude 4.5 Haiku", "claude-haiku-4-5-20251001" },
-                { "Claude 4.5 Opus", "claude-opus-4-5-20251101" },
-                { "Claude 3.7 Sonnet", "claude-3-7-sonnet" }
-            });
-        }
-        else if (cloudProvider == "Google Gemini")
-        {
-            backendType = BackendType.Gemini;
-            config.GeminiKey = PromptKey("Google Gemini", config.GeminiKey);
-            modelName = SelectModel(new Dictionary<string, string> {
-                { "Gemini 3.0 Pro", "gemini-3.0-pro-preview" },
-                { "Gemini 2.5 Pro", "gemini-2.5-pro" },
-                { "Gemini 2.5 Flash", "gemini-2.5-flash" }
-            });
-        }
-        else if (cloudProvider == "DeepSeek")
-        {
-            backendType = BackendType.DeepSeek;
-            config.DeepSeekKey = PromptKey("DeepSeek", config.DeepSeekKey);
-            modelName = SelectModel(new Dictionary<string, string> {
-                { "DeepSeek R1 (Reasoner)", "deepseek-reasoner" },
-                { "DeepSeek V3 (Chat)", "deepseek-chat" }
-            });
-        }
-        else if (cloudProvider == "XAI (Grok)")
-        {
-            backendType = BackendType.Xai;
-            config.XaiKey = PromptKey("XAI (Grok)", config.XaiKey);
-            modelName = SelectModel(new Dictionary<string, string> {
-                { "Grok-3", "grok-3" },
-                { "Grok-2", "grok-2-1212" }
-            });
-        }
-        else if (cloudProvider == "Groq")
-        {
-            backendType = BackendType.GroqCloud;
-            config.GroqKey = PromptKey("Groq", config.GroqKey);
-            modelName = SelectModel(new Dictionary<string, string> {
-                { "Llama 3.3 70B", "llama-3.3-70b-versatile" },
-                { "Llama 3.1 8B", "llama-3.1-8b-instant" },
-                { "Mixtral 8x7B", "mixtral-8x7b-32768" }
-            });
-        }
-        else
-        {
-            return (null, BackendType.Ollama, "");
+            return (null, default, ""); // ESC during model selection
         }
 
         config.ChatBackend = backendType.ToString();
@@ -237,12 +268,20 @@ public class ProviderConfigurationService : IProviderConfigurationService
 
         choices.Add("➕ Add custom model...");
 
-        var selection = AnsiConsole.Prompt(
-            new SelectionPrompt<string>()
-                .Title("[cyan]Select Model:[/]")
-                .PageSize(15)
-                .MoreChoicesText("[grey]([yellow]↓↑[/] to navigate, [yellow]ESC[/] to cancel)[/]")
-                .AddChoices(choices));
+        string selection;
+        try
+        {
+            selection = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[cyan]Select Model:[/]")
+                    .PageSize(15)
+                    .MoreChoicesText("[grey]([yellow]↓↑[/] to navigate, [yellow]ESC[/] to cancel)[/]")
+                    .AddChoices(choices));
+        }
+        catch
+        {
+            return ""; // ESC → cancel
+        }
 
         if (selection.Contains("Add custom"))
         {
