@@ -33,9 +33,10 @@ var earlyUpdate = await Task.WhenAny(updateCheckTask, Task.Delay(1500)) == updat
     ? await updateCheckTask
     : null;
 
+// Only show update in header if check completed fast enough; never falsely claim "up to date"
 var headerStatus = earlyUpdate is not null
-    ? $"[dim]v{UpdateService.CurrentVersion}[/] [yellow]· ⚡ v{earlyUpdate} available[/]"
-    : $"[dim]Semantic Search powered by MaIN.NET · v{UpdateService.CurrentVersion} · ✓ up to date[/]";
+    ? $"[dim]Semantic Search powered by MaIN.NET · v{UpdateService.CurrentVersion}[/] [yellow]· ⚡ v{earlyUpdate} available[/]"
+    : $"[dim]Semantic Search powered by MaIN.NET · v{UpdateService.CurrentVersion}[/]";
 
 AnsiConsole.Write(new Rule(headerStatus).RuleStyle("dim"));
 AnsiConsole.WriteLine();
@@ -71,14 +72,23 @@ if (multiEngine.LoadedDocumentCount == 0)
     return;
 }
 
-// Final update result (in case header check hadn't finished in time)
+// Final update result — always definitive at this point
 var updateVersion = earlyUpdate ?? await updateCheckTask;
 
 if (updateVersion is not null)
 {
     AnsiConsole.MarkupLine($"[yellow]⚡ Update available:[/] [bold cyan]v{updateVersion}[/] [dim](current: v{UpdateService.CurrentVersion})[/]");
-    AnsiConsole.WriteLine();
+    if (AnsiConsole.Confirm("[cyan]Update now?[/]", false))
+    {
+        UpdateService.PerformUpdate();
+        return;
+    }
 }
+else
+{
+    AnsiConsole.MarkupLine($"[dim]✓ v{UpdateService.CurrentVersion} — up to date[/]");
+}
+AnsiConsole.WriteLine();
 
 bool running = true;
 
