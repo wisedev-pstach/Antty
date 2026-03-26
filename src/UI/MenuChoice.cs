@@ -40,11 +40,7 @@ public static class MenuChoiceExtensions
         var choices = new List<string>(_baseChoiceMap.Keys);
 
         if (updateVersion is not null)
-        {
-            // Insert update option before Exit
-            var exitIndex = choices.IndexOf("❌ Exit");
-            choices.Insert(exitIndex, $"🔄 Update Available ({updateVersion})");
-        }
+            choices.Insert(0, $"🔄 Update Available ({updateVersion})");
 
         return choices.ToArray();
     }
