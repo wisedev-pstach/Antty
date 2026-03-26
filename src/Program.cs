@@ -28,10 +28,12 @@ var config = AppConfig.Load();
 // Start update check — runs in background during provider/doc setup
 var updateCheckTask = UpdateService.CheckForUpdateAsync();
 
-// Show version + update status in header (wait max 1.5s to not delay startup)
-var earlyUpdate = await Task.WhenAny(updateCheckTask, Task.Delay(1500)) == updateCheckTask
-    ? await updateCheckTask
-    : null;
+// Show version + update status in header (wait max 2s to not delay startup)
+string? earlyUpdate = null;
+if (await Task.WhenAny(updateCheckTask, Task.Delay(2000)) == updateCheckTask)
+{
+    try { earlyUpdate = await updateCheckTask; } catch { }
+}
 
 // Only show update in header if check completed fast enough; never falsely claim "up to date"
 var headerStatus = earlyUpdate is not null
@@ -73,7 +75,8 @@ if (multiEngine.LoadedDocumentCount == 0)
 }
 
 // Final update result — always definitive at this point
-var updateVersion = earlyUpdate ?? await updateCheckTask;
+string? updateVersion = null;
+try { updateVersion = earlyUpdate ?? await updateCheckTask; } catch { }
 
 if (updateVersion is not null)
 {
