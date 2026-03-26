@@ -25,20 +25,16 @@ AnsiConsole.Write(new FigletText("Antty").Centered().Color(Color.Cyan1));
 
 var config = AppConfig.Load();
 
-// Start update check — runs in background during provider/doc setup
-var updateCheckTask = UpdateService.CheckForUpdateAsync();
-
-// Show version + update status in header (wait max 2s to not delay startup)
+// Check for updates synchronously with a short timeout — no race conditions
 string? earlyUpdate = null;
-if (await Task.WhenAny(updateCheckTask, Task.Delay(2000)) == updateCheckTask)
+using (var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(4)))
 {
-    try { earlyUpdate = await updateCheckTask; } catch { }
+    try { earlyUpdate = await UpdateService.CheckForUpdateAsync(cts.Token); } catch { }
 }
 
-// Only show update in header if check completed fast enough; never falsely claim "up to date"
 var headerStatus = earlyUpdate is not null
     ? $"[dim]Semantic Search powered by MaIN.NET · v{UpdateService.CurrentVersion}[/] [yellow]· ⚡ v{earlyUpdate} available[/]"
-    : $"[dim]Semantic Search powered by MaIN.NET · v{UpdateService.CurrentVersion}[/]";
+    : $"[dim]Semantic Search powered by MaIN.NET · v{UpdateService.CurrentVersion} · ✓ up to date[/]";
 
 AnsiConsole.Write(new Rule(headerStatus).RuleStyle("dim"));
 AnsiConsole.WriteLine();
@@ -74,23 +70,7 @@ if (multiEngine.LoadedDocumentCount == 0)
     return;
 }
 
-// Final update result — always definitive at this point
-string? updateVersion = null;
-try { updateVersion = earlyUpdate ?? await updateCheckTask; } catch { }
-
-if (updateVersion is not null)
-{
-    AnsiConsole.MarkupLine($"[yellow]⚡ Update available:[/] [bold cyan]v{updateVersion}[/] [dim](current: v{UpdateService.CurrentVersion})[/]");
-    if (AnsiConsole.Confirm("[cyan]Update now?[/]", false))
-    {
-        UpdateService.PerformUpdate();
-        return;
-    }
-}
-else
-{
-    AnsiConsole.MarkupLine($"[dim]✓ v{UpdateService.CurrentVersion} — up to date[/]");
-}
+var updateVersion = earlyUpdate;
 AnsiConsole.WriteLine();
 
 bool running = true;

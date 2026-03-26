@@ -19,7 +19,7 @@ public static class UpdateService
     /// Returns the latest version string if a newer version is available,
     /// null if up to date, or throws if the check could not complete.
     /// </summary>
-    public static async Task<string?> CheckForUpdateAsync()
+    public static async Task<string?> CheckForUpdateAsync(CancellationToken cancellationToken = default)
     {
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
         client.DefaultRequestHeaders.Add("User-Agent", "Antty-UpdateCheck");
@@ -27,7 +27,7 @@ public static class UpdateService
             new System.Net.Http.Headers.CacheControlHeaderValue { NoCache = true, NoStore = true };
 
         var url = $"{VersionUrl}?t={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
-        var raw = (await client.GetStringAsync(url)).Trim();
+        var raw = (await client.GetStringAsync(url, cancellationToken)).Trim();
 
         if (Version.TryParse(raw, out var latest) &&
             Version.TryParse(CurrentVersion, out var current) &&
