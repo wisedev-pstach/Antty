@@ -39,12 +39,13 @@ var headerStatus = earlyUpdate is not null
 AnsiConsole.Write(new Rule(headerStatus).RuleStyle("dim"));
 AnsiConsole.WriteLine();
 
+
 var providerService = new ProviderConfigurationService();
 var settingsService = new SettingsService();
 var searchService = new DocumentSearchService();
 var chatService = new AssistantChatService();
 
-var (embeddingProvider, backendType, modelName) = await providerService.ConfigureProvidersAsync(config);
+var (embeddingProvider, backendType, modelName) = await providerService.ConfigureProvidersAsync(config, earlyUpdate);
 
 if (embeddingProvider == null)
 {

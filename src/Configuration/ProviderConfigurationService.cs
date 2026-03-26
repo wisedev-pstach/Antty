@@ -1,6 +1,7 @@
 using Antty.Configuration;
 using Antty.Core;
 using Antty.Embedding;
+using Antty.Services;
 using MaIN.Domain.Configuration;
 using Spectre.Console;
 
@@ -9,10 +10,16 @@ namespace Antty.Configuration;
 public class ProviderConfigurationService : IProviderConfigurationService
 {
     public async Task<(IEmbeddingProvider? embeddingProvider, BackendType backendType, string modelName)>
-        ConfigureProvidersAsync(AppConfig config)
+        ConfigureProvidersAsync(AppConfig config, string? updateVersion = null)
     {
         AnsiConsole.Write(new Rule("[bold cyan]🤖 ASSISTANT CONFIGURATION[/]").RuleStyle("cyan"));
         AnsiConsole.WriteLine();
+
+        var choices = new List<string>();
+        if (updateVersion is not null)
+            choices.Add($"🔄 Update to v{updateVersion}");
+        choices.Add("💻 Local (Offline) - Ollama + Ollama Embeddings");
+        choices.Add("☁️  Cloud (Online) - Cloud Models + OpenAI Embeddings");
 
         string modeChoice;
         try
@@ -22,14 +29,17 @@ public class ProviderConfigurationService : IProviderConfigurationService
                     .Title("[cyan]Choose Operating Mode:[/]")
                     .PageSize(10)
                     .MoreChoicesText("[grey](Press [yellow]ESC[/] to keep current settings)[/]")
-                    .AddChoices(new[] {
-                        "💻 Local (Offline) - Ollama + Ollama Embeddings",
-                        "☁️  Cloud (Online) - Cloud Models + OpenAI Embeddings"
-                    }));
+                    .AddChoices(choices));
         }
         catch
         {
             return (null, default, ""); // ESC → cancel
+        }
+
+        if (modeChoice.StartsWith("🔄"))
+        {
+            UpdateService.PerformUpdate();
+            return (null, default, "");
         }
 
         bool isLocalMode = modeChoice.StartsWith("💻");
