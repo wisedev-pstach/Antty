@@ -53,14 +53,34 @@ public static class UpdateService
                 UseShellExecute = true
             });
         }
-        else
+        else if (OperatingSystem.IsMacOS())
         {
+            // Open a new interactive Terminal window so sudo can prompt for password
             Process.Start(new ProcessStartInfo
             {
-                FileName = "bash",
-                Arguments = $"-c \"curl -fsSL {BootstrapUnixUrl} | bash\"",
-                UseShellExecute = true
+                FileName = "osascript",
+                Arguments = $"-e 'tell application \"Terminal\" to do script \"curl -fsSL {BootstrapUnixUrl} | bash\"'",
+                UseShellExecute = false
             });
+        }
+        else
+        {
+            // Linux: open a new terminal emulator window
+            var terminals = new[] { "gnome-terminal", "xterm", "konsole", "xfce4-terminal" };
+            foreach (var term in terminals)
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = term,
+                        Arguments = $"-- bash -c 'curl -fsSL {BootstrapUnixUrl} | bash; exec bash'",
+                        UseShellExecute = false
+                    });
+                    break;
+                }
+                catch { }
+            }
         }
 
         Environment.Exit(0);
