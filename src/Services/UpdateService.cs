@@ -56,12 +56,10 @@ public static class UpdateService
         else if (OperatingSystem.IsMacOS())
         {
             // Open a new interactive Terminal window so sudo can prompt for password
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "osascript",
-                Arguments = $"-e 'tell application \"Terminal\" to do script \"curl -fsSL {BootstrapUnixUrl} | bash\"'",
-                UseShellExecute = false
-            });
+            var psi = new ProcessStartInfo { FileName = "osascript", UseShellExecute = false };
+            psi.ArgumentList.Add("-e");
+            psi.ArgumentList.Add($"tell application \"Terminal\" to do script \"curl -fsSL {BootstrapUnixUrl} | bash\"");
+            Process.Start(psi);
         }
         else
         {
