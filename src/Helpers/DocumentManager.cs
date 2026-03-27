@@ -61,11 +61,31 @@ public static class DocumentManager
             return display;
         }
 
+        // Group subdir files by their top-level subfolder
+        var folderSentinelMap = new Dictionary<string, List<string>>();
+        if (subDirFiles.Count > 0)
+        {
+            var subDirGroups = subDirFiles
+                .GroupBy(f => Path.GetRelativePath(currentDir, f).Split(Path.DirectorySeparatorChar)[0])
+                .OrderBy(g => g.Key);
+
+            foreach (var group in subDirGroups)
+            {
+                var files = group.ToList();
+                var indexed = files.Count(f => File.Exists(AppConfig.GetKnowledgeBasePath(f, config.EmbeddingProvider)));
+                var sentinel = $"  📁 [bold]{group.Key}/[/] [dim]({files.Count} files, {indexed} indexed)[/]";
+                folderSentinelMap[sentinel] = files;
+            }
+        }
+
         var choices = new List<string>();
 
         choices.Add(SelectAllCurrentSentinel);
         if (subDirFiles.Count > 0)
             choices.Add(SelectAllRecursiveSentinel);
+
+        foreach (var sentinel in folderSentinelMap.Keys)
+            choices.Add(sentinel);
 
         foreach (var f in currentDirFiles)
             choices.Add(MakeDisplayName(f, false));
@@ -88,10 +108,19 @@ public static class DocumentManager
         else if (selectedDisplayNames.Contains(SelectAllCurrentSentinel))
             selectedPaths = currentDirFiles;
         else
+        {
             selectedPaths = selectedDisplayNames
                 .Where(d => choiceMap.ContainsKey(d))
                 .Select(d => choiceMap[d])
                 .ToList();
+
+            // Expand any selected folder sentinels to their files
+            foreach (var (sentinel, files) in folderSentinelMap)
+            {
+                if (selectedDisplayNames.Contains(sentinel))
+                    selectedPaths.AddRange(files.Where(f => !selectedPaths.Contains(f)));
+            }
+        }
 
         config.SelectedDocuments = selectedPaths;
         config.Save();
