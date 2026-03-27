@@ -13,9 +13,9 @@
   <ItemGroup>
     <PackageReference Include="Azure.AI.OpenAI" Version="2.7.0-beta.2" />
     <PackageReference Include="MaIN.NET" Version="0.10.3" />
-    <PackageReference Include="Microsoft.SemanticKernel.Core" Version="1.70.0" />
+    <PackageReference Include="Microsoft.SemanticKernel.Core" Version="1.74.0" />
     <PackageReference Include="Spectre.Console" Version="0.54.0" />
-    <PackageReference Include="System.Numerics.Tensors" Version="10.0.2" />
+    <PackageReference Include="System.Numerics.Tensors" Version="10.0.4" />
     <PackageReference Include="UglyToad.PdfPig" Version="1.7.0-custom-5" />
   </ItemGroup>
 
