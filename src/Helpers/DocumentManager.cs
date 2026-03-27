@@ -90,16 +90,21 @@ public static class DocumentManager
         foreach (var f in currentDirFiles)
             choices.Add(MakeDisplayName(f, false));
 
-        foreach (var f in subDirFiles)
-            choices.Add(MakeDisplayName(f, true));
-
-        var selectedDisplayNames = AnsiConsole.Prompt(
-            new MultiSelectionPrompt<string>()
-                .Title("[cyan]Select documents to load:[/]")
-                .PageSize(20)
-                .Required()
-                .InstructionsText("[grey](Press [blue]<space>[/] to toggle, [green]<enter>[/] to confirm, [yellow]ESC[/] to exit | [green]✓[/] = already indexed)[/]")
-                .AddChoices(choices));
+        List<string> selectedDisplayNames;
+        try
+        {
+            selectedDisplayNames = AnsiConsole.Prompt(
+                new MultiSelectionPrompt<string>()
+                    .Title("[cyan]Select documents to load:[/]")
+                    .PageSize(20)
+                    .Required()
+                    .InstructionsText("[grey](Press [blue]<space>[/] to toggle, [green]<enter>[/] to confirm, [yellow]ESC[/] to go back | [green]✓[/] = already indexed)[/]")
+                    .AddChoices(choices));
+        }
+        catch
+        {
+            return null; // ESC → go back
+        }
 
         List<string> selectedPaths;
 

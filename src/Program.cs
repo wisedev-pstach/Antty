@@ -45,30 +45,47 @@ var settingsService = new SettingsService();
 var searchService = new DocumentSearchService();
 var chatService = new AssistantChatService();
 
-var (embeddingProvider, backendType, modelName) = await providerService.ConfigureProvidersAsync(config, earlyUpdate);
-
-if (embeddingProvider == null)
-{
-    AnsiConsole.MarkupLine("[red]Configuration failed. Exiting.[/]");
-    return;
-}
-
-AnsiConsole.WriteLine();
-
-var documentsToProcess = await DocumentManager.SelectAndLoadDocumentsAsync(config, embeddingProvider);
-if (documentsToProcess == null || documentsToProcess.Count == 0)
-{
-    AnsiConsole.MarkupLine("[red]❌ No documents could be loaded. Exiting.[/]");
-    return;
-}
-
+IEmbeddingProvider? embeddingProvider = null;
+BackendType backendType = default;
+string modelName = "";
+List<(string filePath, string kbPath)>? documentsToProcess = null;
 var multiEngine = new MultiBookSearchEngine();
-multiEngine.LoadDocuments(embeddingProvider, documentsToProcess);
 
-if (multiEngine.LoadedDocumentCount == 0)
+while (true)
 {
-    AnsiConsole.MarkupLine("[red]❌ No documents could be loaded. Exiting.[/]");
-    return;
+    (embeddingProvider, backendType, modelName) = await providerService.ConfigureProvidersAsync(config, earlyUpdate);
+
+    if (embeddingProvider == null)
+    {
+        AnsiConsole.MarkupLine("[dim]Goodbye! 👋[/]");
+        return;
+    }
+
+    AnsiConsole.WriteLine();
+
+    documentsToProcess = await DocumentManager.SelectAndLoadDocumentsAsync(config, embeddingProvider);
+
+    if (documentsToProcess == null)
+    {
+        // ESC on document selection → go back to provider config
+        embeddingProvider.Dispose();
+        continue;
+    }
+
+    if (documentsToProcess.Count == 0)
+    {
+        AnsiConsole.MarkupLine("[red]❌ No documents could be loaded.[/]");
+        embeddingProvider.Dispose();
+        continue;
+    }
+
+    multiEngine.LoadDocuments(embeddingProvider, documentsToProcess);
+
+    if (multiEngine.LoadedDocumentCount > 0)
+        break;
+
+    AnsiConsole.MarkupLine("[red]❌ No documents could be loaded.[/]");
+    embeddingProvider.Dispose();
 }
 
 var updateVersion = earlyUpdate;
