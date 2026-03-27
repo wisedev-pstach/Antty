@@ -9,6 +9,7 @@ public static class DocumentManager
 {
     private const string SelectAllCurrentSentinel = "  [bold]Select All[/] [dim](current folder)[/]";
     private const string SelectAllRecursiveSentinel = "  [bold]Select All[/] [dim](including subdirectories)[/]";
+    private const string GoBackSentinel = "🔙 Back";
 
     public static async Task<List<(string filePath, string kbPath)>?> SelectAndLoadDocumentsAsync(
         AppConfig config,
@@ -73,13 +74,14 @@ public static class DocumentManager
             {
                 var files = group.ToList();
                 var indexed = files.Count(f => File.Exists(AppConfig.GetKnowledgeBasePath(f, config.EmbeddingProvider)));
-                var sentinel = $"  📁 [bold]{group.Key}/[/] [dim]({files.Count} files, {indexed} indexed)[/]";
+                var sentinel = $"  📁 {group.Key}/ ({files.Count} files, {indexed} indexed)";
                 folderSentinelMap[sentinel] = files;
             }
         }
 
         var choices = new List<string>();
 
+        choices.Add(GoBackSentinel);
         choices.Add(SelectAllCurrentSentinel);
         if (subDirFiles.Count > 0)
             choices.Add(SelectAllRecursiveSentinel);
@@ -90,21 +92,16 @@ public static class DocumentManager
         foreach (var f in currentDirFiles)
             choices.Add(MakeDisplayName(f, false));
 
-        List<string> selectedDisplayNames;
-        try
-        {
-            selectedDisplayNames = AnsiConsole.Prompt(
-                new MultiSelectionPrompt<string>()
-                    .Title("[cyan]Select documents to load:[/]")
-                    .PageSize(20)
-                    .Required()
-                    .InstructionsText("[grey](Press [blue]<space>[/] to toggle, [green]<enter>[/] to confirm, [yellow]ESC[/] to go back | [green]✓[/] = already indexed)[/]")
-                    .AddChoices(choices));
-        }
-        catch
-        {
-            return null; // ESC → go back
-        }
+        var selectedDisplayNames = AnsiConsole.Prompt(
+            new MultiSelectionPrompt<string>()
+                .Title("[cyan]Select documents to load:[/]")
+                .PageSize(20)
+                .Required()
+                .InstructionsText("[grey](Press [blue]<space>[/] to toggle, [green]<enter>[/] to confirm | [green]✓[/] = already indexed)[/]")
+                .AddChoices(choices));
+
+        if (selectedDisplayNames.Contains(GoBackSentinel))
+            return null;
 
         List<string> selectedPaths;
 
