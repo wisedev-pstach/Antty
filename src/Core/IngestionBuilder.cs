@@ -1,8 +1,14 @@
 using Antty.Models;
 using Antty.Embedding;
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using UglyToad.PdfPig;
+using DocumentFormat.OpenXml.Packaging;
+using VersOne.Epub;
 using Spectre.Console;
+using W = DocumentFormat.OpenXml.Wordprocessing;
+using A = DocumentFormat.OpenXml.Drawing;
 
 namespace Antty.Core;
 
@@ -155,8 +161,118 @@ public static class IngestionBuilder
                         }
                         break;
 
+                    case ".docx":
+                    {
+                        using var doc = WordprocessingDocument.Open(filePath, false);
+                        var body = doc.MainDocumentPart?.Document?.Body;
+                        if (body == null) break;
+
+                        var pageText = new StringBuilder();
+                        int pageNum = 1;
+
+                        foreach (var para in body.Descendants<W.Paragraph>())
+                        {
+                            bool hasPageBreak = para.Descendants<W.Break>()
+                                .Any(b => b.Type?.Value == W.BreakValues.Page);
+
+                            if (hasPageBreak && pageText.Length > 0)
+                            {
+                                results.Add((pageNum++, pageText.ToString().Trim()));
+                                pageText.Clear();
+                            }
+
+                            var text = para.InnerText.Trim();
+                            if (!string.IsNullOrEmpty(text))
+                            {
+                                pageText.AppendLine(text);
+                                pageText.AppendLine();
+                            }
+
+                            if (pageText.Length >= 3000)
+                            {
+                                results.Add((pageNum++, pageText.ToString().Trim()));
+                                pageText.Clear();
+                            }
+                        }
+
+                        if (pageText.Length > 0)
+                            results.Add((pageNum, pageText.ToString().Trim()));
+                        break;
+                    }
+
+                    case ".pptx":
+                    {
+                        using var prs = PresentationDocument.Open(filePath, false);
+                        var presentationPart = prs.PresentationPart;
+                        if (presentationPart == null) break;
+
+                        var slideIds = presentationPart.Presentation.SlideIdList?
+                            .Elements<DocumentFormat.OpenXml.Presentation.SlideId>() ?? [];
+
+                        int slideNum = 1;
+                        foreach (var slideId in slideIds)
+                        {
+                            if (slideId.RelationshipId?.Value is not string relId) continue;
+                            if (presentationPart.GetPartById(relId) is not SlidePart slidePart) continue;
+
+                            var texts = slidePart.Slide
+                                .Descendants<A.Text>()
+                                .Select(t => t.Text.Trim())
+                                .Where(t => !string.IsNullOrEmpty(t));
+
+                            var slideText = string.Join("\n", texts);
+                            if (!string.IsNullOrEmpty(slideText))
+                                results.Add((slideNum, slideText));
+
+                            slideNum++;
+                        }
+                        break;
+                    }
+
+                    case ".epub":
+                    {
+                        var book = await EpubReader.ReadBookAsync(filePath);
+                        int chapterNum = 1;
+
+                        foreach (var item in book.ReadingOrder)
+                        {
+                            var html = item.Content ?? "";
+                            var text = Regex.Replace(html, "<[^>]+>", " ");
+                            text = System.Net.WebUtility.HtmlDecode(text);
+                            text = Regex.Replace(text, @"\s{2,}", "\n").Trim();
+
+                            if (text.Length >= 100)
+                                results.Add((chapterNum++, text));
+                        }
+                        break;
+                    }
+
+                    case ".csv":
+                    {
+                        var lines = await File.ReadAllLinesAsync(filePath);
+                        if (lines.Length < 2) break;
+
+                        var headers = ParseCsvLine(lines[0]);
+                        const int rowsPerChunk = 50;
+
+                        for (int i = 1; i < lines.Length; i += rowsPerChunk)
+                        {
+                            var chunkRows = lines.Skip(i).Take(rowsPerChunk)
+                                .Select(line =>
+                                {
+                                    var values = ParseCsvLine(line);
+                                    return string.Join(", ", headers.Zip(values, (h, v) => $"{h}: {v}"));
+                                });
+
+                            var chunk = string.Join("\n", chunkRows);
+                            if (!string.IsNullOrWhiteSpace(chunk))
+                                results.Add(((i / rowsPerChunk) + 1, chunk));
+                        }
+                        break;
+                    }
+
                     default:
-                        throw new NotSupportedException($"File format '{extension}' is not supported. Supported formats: .pdf, .txt, .md, .json");
+                        throw new NotSupportedException($"File format '{extension}' is not supported.");
                 }
 
                 await Task.CompletedTask;
@@ -164,5 +280,41 @@ public static class IngestionBuilder
 
         AnsiConsole.MarkupLine($"[green]✓[/] Loaded [bold cyan]{results.Count}[/] sections from {Path.GetExtension(filePath).ToUpper()} file.");
         return results;
+    }
+
+    private static string[] ParseCsvLine(string line)
+    {
+        var result = new List<string>();
+        var current = new StringBuilder();
+        bool inQuotes = false;
+
+        for (int i = 0; i < line.Length; i++)
+        {
+            char c = line[i];
+            if (c == '"')
+            {
+                if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
+                {
+                    current.Append('"');
+                    i++;
+                }
+                else
+                {
+                    inQuotes = !inQuotes;
+                }
+            }
+            else if (c == ',' && !inQuotes)
+            {
+                result.Add(current.ToString().Trim());
+                current.Clear();
+            }
+            else
+            {
+                current.Append(c);
+            }
+        }
+
+        result.Add(current.ToString().Trim());
+        return result.ToArray();
     }
 }

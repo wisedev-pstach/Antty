@@ -14,6 +14,17 @@ using Spectre.Console;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
+AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+{
+    var ex = e.ExceptionObject as Exception;
+    AnsiConsole.WriteLine();
+    AnsiConsole.Write(new Panel($"[red]{Markup.Escape(ex?.Message ?? "An unexpected error occurred.")}[/]")
+        .Header("[red bold] Unexpected Error [/]")
+        .BorderColor(Color.Red));
+    AnsiConsole.WriteLine();
+    Environment.Exit(1);
+};
+
 var services = new ServiceCollection();
 services.AddMaIN(new ConfigurationBuilder().Build());
 var serviceProvider = services.BuildServiceProvider();

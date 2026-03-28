@@ -16,15 +16,26 @@ public static class DocumentManager
         Embedding.IEmbeddingProvider embeddingProvider)
     {
         var currentDir = Directory.GetCurrentDirectory();
-        var supportedExtensions = new[] { ".pdf", ".txt", ".md", ".json" };
+        var supportedExtensions = new[] { ".pdf", ".txt", ".md", ".json", ".docx", ".pptx", ".epub", ".csv" };
+
+        var safeEnum = new EnumerationOptions
+        {
+            IgnoreInaccessible = true,
+            RecurseSubdirectories = false
+        };
+        var safeEnumRecursive = new EnumerationOptions
+        {
+            IgnoreInaccessible = true,
+            RecurseSubdirectories = true
+        };
 
         var currentDirFiles = supportedExtensions
-            .SelectMany(ext => Directory.GetFiles(currentDir, $"*{ext}"))
+            .SelectMany(ext => Directory.GetFiles(currentDir, $"*{ext}", safeEnum))
             .OrderBy(f => f)
             .ToList();
 
         var subDirFiles = supportedExtensions
-            .SelectMany(ext => Directory.GetFiles(currentDir, $"*{ext}", SearchOption.AllDirectories))
+            .SelectMany(ext => Directory.GetFiles(currentDir, $"*{ext}", safeEnumRecursive))
             .Except(currentDirFiles)
             .OrderBy(f => f)
             .ToList();

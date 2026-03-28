@@ -1,6 +1,6 @@
 # 📚 Antty
 
-**A terminal-based semantic search and chat interface for your documents.** Query PDFs, markdown files, and text documents using natural language. Works entirely offline with local models, or connect to OpenAI, Anthropic, Google, DeepSeek, Groq, or xAI with your own API keys.
+**A terminal-based semantic search and chat interface for your documents.** Query PDFs, Word documents, presentations, eBooks, and more using natural language. Works entirely offline with local models, or connect to OpenAI, Anthropic, Google, DeepSeek, Groq, or xAI with your own API keys.
 
 Built on [**MaIN.NET**](https://github.com/wisedev-code/MaIN.NET) for multi-provider orchestration.
 
@@ -11,7 +11,7 @@ Built on [**MaIN.NET**](https://github.com/wisedev-code/MaIN.NET) for multi-prov
 - **🔍 Semantic Search** - Find content by meaning, not just keywords
 - **📚 Multi-Document** - Query across multiple files simultaneously
 - **💾 Smart Caching** - Build knowledge bases once, reuse forever. Switch between providers without re-indexing.
-- **📄 Format Support** - PDF, TXT, MD, JSON
+- **📄 Format Support** - PDF, DOCX, PPTX, EPUB, CSV, TXT, MD, JSON
 
 ## 🚀 Installation
 
@@ -41,7 +41,7 @@ antty
 ```
 
 The first run will ask you to:
-1. Choose embedding provider (local via Nomic Embed, or OpenAI)
+1. Choose embedding provider (local via BGE-M3, or OpenAI)
 2. Select chat backend (Ollama for local, or cloud providers with your API key)
 3. Pick documents to load
 4. Start conversing
@@ -84,7 +84,7 @@ Antty uses [**MaIN.NET**](https://github.com/wisedev-code/MaIN.NET) to orchestra
 
 ### Local (Privacy-First, No API Key)
 - **Ollama** - Any model you've pulled (Llama, Mistral, Qwen, etc.)
-- **Nomic Embed** - Local embeddings, runs on CPU/GPU
+- **BGE-M3** - Local embeddings via Ollama, 1024 dimensions, runs on CPU/GPU
 
 ### Cloud (Bring Your Own API Key)
 - **OpenAI** - GPT-5.2, o3, GPT-5 Nano, GPT-4o, o1
@@ -139,11 +139,13 @@ This removes `antty` from PATH. Cached knowledge bases remain in your config dir
 - **[MaIN.NET](https://github.com/wisedev-code/MaIN.NET)** - LLM Interface
 - **Spectre.Console** - Terminal UI
 - **PdfPig** - PDF text extraction
+- **DocumentFormat.OpenXml** - DOCX and PPTX extraction
+- **VersOne.Epub** - EPUB extraction
 
 ## 🐛 Troubleshooting
 
-**No documents found**  
-Place `.pdf`, `.txt`, `.md`, or `.json` files in the current directory before running `antty`.
+**No documents found**
+Place supported files (`.pdf`, `.docx`, `.pptx`, `.epub`, `.csv`, `.txt`, `.md`, `.json`) in the current directory before running `antty`.
 
 **API key not configured**  
 Run `antty`, choose Settings, and enter your API key for the selected provider.
