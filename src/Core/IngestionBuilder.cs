@@ -93,7 +93,7 @@ public static class IngestionBuilder
                     }
                     catch (Exception ex)
                     {
-                        AnsiConsole.MarkupLine($"[red]Error fetching embeddings: {ex.Message}[/]");
+                        AnsiConsole.MarkupLine($"[red]Error fetching embeddings: {Markup.Escape(ex.Message)}[/]");
                     }
                 }
             });
@@ -233,6 +233,7 @@ public static class IngestionBuilder
                     {
                         var book = await EpubReader.ReadBookAsync(filePath);
                         int chapterNum = 1;
+                        const int epubChunkSize = 3000;
 
                         foreach (var item in book.ReadingOrder)
                         {
@@ -241,8 +242,13 @@ public static class IngestionBuilder
                             text = System.Net.WebUtility.HtmlDecode(text);
                             text = Regex.Replace(text, @"\s{2,}", "\n").Trim();
 
-                            if (text.Length >= 100)
-                                results.Add((chapterNum++, text));
+                            if (text.Length < 100) continue;
+
+                            // Split large chapters into sub-chunks to avoid token limits
+                            for (int i = 0; i < text.Length; i += epubChunkSize)
+                                results.Add((chapterNum, text.Substring(i, Math.Min(epubChunkSize, text.Length - i))));
+
+                            chapterNum++;
                         }
                         break;
                     }
