@@ -212,8 +212,12 @@ public class ProviderConfigurationService : IProviderConfigurationService
                 backendType = BackendType.Xai;
                 config.XaiKey = PromptKey("XAI (Grok)", config.XaiKey);
                 modelName = SelectModel(new Dictionary<string, string> {
+                    { "Grok-4 (Flagship)", "grok-4" },
+                    { "Grok-4 Reasoning", "grok-4.20-0309-reasoning" },
+                    { "Grok-4.1 Fast Reasoning", "grok-4-1-fast-reasoning" },
+                    { "Grok-4.1 Fast", "grok-4-1-fast-non-reasoning" },
                     { "Grok-3", "grok-3" },
-                    { "Grok-2", "grok-2-1212" }
+                    { "Grok-3 Mini", "grok-3-mini" }
                 });
             }
             else if (cloudProvider == "Groq")
