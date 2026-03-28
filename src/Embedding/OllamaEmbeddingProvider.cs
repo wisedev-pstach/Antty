@@ -15,7 +15,7 @@ public class OllamaEmbeddingProvider : IEmbeddingProvider
     public string ProviderName => "ollama";
     public string ModelName => _modelName;
 
-    public OllamaEmbeddingProvider(string modelName = "nomic-embed-text", string baseUrl = "http://localhost:11434")
+    public OllamaEmbeddingProvider(string modelName = "bge-m3", string baseUrl = "http://localhost:11434")
     {
         _modelName = modelName;
         _baseUrl = baseUrl;

@@ -71,7 +71,7 @@ public class ProviderConfigurationService : IProviderConfigurationService
             return (null, backendType, "");
         }
 
-        const string embeddingModel = "nomic-embed-text";
+        const string embeddingModel = "bge-m3";
         if (!await OllamaManager.IsModelInstalledAsync(embeddingModel))
         {
             AnsiConsole.MarkupLine($"[yellow]Embedding model {embeddingModel} not found.[/]");
@@ -99,7 +99,7 @@ public class ProviderConfigurationService : IProviderConfigurationService
         config.Save();
         AnsiConsole.WriteLine();
 
-        var embeddingProvider = new OllamaEmbeddingProvider("nomic-embed-text");
+        var embeddingProvider = new OllamaEmbeddingProvider("bge-m3");
         return (embeddingProvider, backendType, modelName);
     }
 
