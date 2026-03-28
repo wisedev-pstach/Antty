@@ -243,10 +243,7 @@ public static class OllamaManager
             {
                 FileName = GetOllamaExecutablePath(),
                 Arguments = $"pull {modelName}",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
+                UseShellExecute = false
             };
 
             using var process = Process.Start(startInfo);
@@ -256,38 +253,7 @@ public static class OllamaManager
                 return false;
             }
 
-            // Ollama outputs progress to both stdout and stderr, read both
-            var outputTask = Task.Run(async () =>
-            {
-                try
-                {
-                    while (!process.HasExited)
-                    {
-                        var line = await process.StandardOutput.ReadLineAsync();
-                    }
-                }
-                catch { }
-            });
-
-            var errorTask = Task.Run(async () =>
-            {
-                try
-                {
-                    while (!process.HasExited)
-                    {
-                        var line = await process.StandardError.ReadLineAsync();
-                    }
-                }
-                catch { }
-            });
-
             await process.WaitForExitAsync();
-
-            try
-            {
-                await Task.WhenAll(outputTask, errorTask);
-            }
-            catch { }
 
             AnsiConsole.WriteLine();
 

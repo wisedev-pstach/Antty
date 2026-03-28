@@ -62,7 +62,8 @@ public class ProviderConfigurationService : IProviderConfigurationService
         ConfigureLocalModeAsync(AppConfig config)
     {
         AnsiConsole.MarkupLine("[dim]Configuring for fully offline use...[/]");
-        config.EmbeddingProvider = "ollama";
+        const string embeddingModel = "bge-m3";
+        config.EmbeddingProvider = $"ollama-{embeddingModel}";
 
         BackendType backendType = BackendType.Ollama;
         if (!await OllamaManager.EnsureOllamaReadyAsync())
@@ -70,8 +71,6 @@ public class ProviderConfigurationService : IProviderConfigurationService
             AnsiConsole.MarkupLine("[red]Cannot proceed without Ollama.[/]");
             return (null, backendType, "");
         }
-
-        const string embeddingModel = "bge-m3";
         if (!await OllamaManager.IsModelInstalledAsync(embeddingModel))
         {
             AnsiConsole.MarkupLine($"[yellow]Embedding model {embeddingModel} not found.[/]");
