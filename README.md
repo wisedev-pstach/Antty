@@ -1,8 +1,10 @@
-# 📚 Antty
+# 🧿 Antty
 
 **A terminal-based semantic search and chat interface for your documents.** Query PDFs, Word documents, presentations, eBooks, and more using natural language. Works entirely offline with local models, or connect to OpenAI, Anthropic, Google, DeepSeek, Groq, or xAI with your own API keys.
 
 Built on [**MaIN.NET**](https://github.com/wisedev-code/MaIN.NET) for multi-provider orchestration.
+
+![Antty demo](antty.gif)
 
 ## ✨ Key Features
 
@@ -155,6 +157,12 @@ Normal for documents with 500+ pages. Progress is shown. Once cached, subsequent
 
 **Ollama not found**  
 Install [Ollama](https://ollama.com) if using local models. Antty can auto-detect and start it.
+
+## ⚖️ Legal Notice
+
+Antty is a tool for searching and querying documents. Please use it only with content you own or have legal rights to access. Do not use Antty to process, distribute, or derive value from copyrighted materials without proper authorization.
+
+**We do not encourage or condone piracy or any infringement of intellectual property rights.**
 
 ## 📄 License
 
