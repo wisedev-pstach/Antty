@@ -6,6 +6,6 @@ public interface IDocumentSearchService
 {
     Task SearchDocumentsAsync(
         MultiBookSearchEngine multiSearchEngine,
-        Antty.Embedding.IEmbeddingProvider embeddingProvider,
+        Embedding.IEmbeddingProvider embeddingProvider,
         AppConfig config);
 }

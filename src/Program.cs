@@ -36,9 +36,8 @@ AnsiConsole.Write(new FigletText("Antty").Centered().Color(Color.Cyan1));
 
 var config = AppConfig.Load();
 
-// Check for updates synchronously with a short timeout — no race conditions
 string? earlyUpdate = null;
-using (var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(4)))
+using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(4)))
 {
     try { earlyUpdate = await UpdateService.CheckForUpdateAsync(cts.Token); } catch { }
 }
@@ -56,10 +55,10 @@ var settingsService = new SettingsService();
 var searchService = new DocumentSearchService();
 var chatService = new AssistantChatService();
 
-IEmbeddingProvider? embeddingProvider = null;
-BackendType backendType = default;
-string modelName = "";
-List<(string filePath, string kbPath)>? documentsToProcess = null;
+IEmbeddingProvider? embeddingProvider;
+BackendType backendType;
+string modelName;
+List<(string filePath, string kbPath)>? documentsToProcess;
 var multiEngine = new MultiBookSearchEngine();
 
 while (true)
@@ -78,7 +77,6 @@ while (true)
 
     if (documentsToProcess == null)
     {
-        // ESC on document selection → go back to provider config
         embeddingProvider.Dispose();
         continue;
     }
@@ -118,7 +116,7 @@ while (running)
     }
     catch
     {
-        break; // ESC pressed
+        break; 
     }
 
     var choice = MenuChoiceExtensions.Parse(choiceText);

@@ -69,10 +69,8 @@ public class AppConfig
     }
     private static string GetStableHash(string input)
     {
-        using (var sha256 = System.Security.Cryptography.SHA256.Create())
-        {
-            var hashBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(input.ToLowerInvariant()));
-            return BitConverter.ToString(hashBytes, 0, 8).Replace("-", "").ToLowerInvariant();
-        }
+        using var sha256 = System.Security.Cryptography.SHA256.Create();
+        var hashBytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(input.ToLowerInvariant()));
+        return BitConverter.ToString(hashBytes, 0, 8).Replace("-", "").ToLowerInvariant();
     }
 }

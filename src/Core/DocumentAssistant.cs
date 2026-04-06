@@ -14,15 +14,13 @@ using MaIN.Services.Services;
 
 namespace Antty.Core;
 
-/// <summary>
-/// AI Assistant for conversational document queries using MaIN.NET
-/// </summary>
+
 public class DocumentAssistant
 {
     private static MultiBookSearchEngine? _searchEngine;
     private static List<(string filePath, string kbPath)>? _documents;
     private static IAgentContextExecutor? _assistantAgent;
-    private static List<Message> _conversationHistory = new();
+    private static readonly List<Message> ConversationHistory = new();
 
     public static Action<string>? ToolLog { get; set; }
 
@@ -36,7 +34,7 @@ public class DocumentAssistant
     {
         _searchEngine = searchEngine;
         _documents = documents;
-        _conversationHistory.Clear();
+        ConversationHistory.Clear();
         AIHub.Extensions.DisableNotificationsLogs();
 
         var documentNames = documents.Select(d => Path.GetFileNameWithoutExtension(d.filePath)).ToList();
@@ -140,13 +138,13 @@ public class DocumentAssistant
             Time = DateTime.UtcNow,
             Type = MessageType.CloudLLM
         };
-        _conversationHistory.Add(userMsg);
+        ConversationHistory.Add(userMsg);
 
         var channel = System.Threading.Channels.Channel.CreateUnbounded<string>();
         var assistantResponse = new System.Text.StringBuilder();
 
         var processTask = _assistantAgent.ProcessAsync(
-            _conversationHistory,
+            ConversationHistory,
             tokenCallback: (token) =>
             {
                 channel.Writer.TryWrite(token.Text);
@@ -182,7 +180,7 @@ public class DocumentAssistant
 
         if (assistantResponse.Length > 0)
         {
-            _conversationHistory.Add(new MaIN.Domain.Entities.Message
+            ConversationHistory.Add(new MaIN.Domain.Entities.Message
             {
                 Content = assistantResponse.ToString(),
                 Role = "assistant",
@@ -204,7 +202,6 @@ public class DocumentAssistant
             var results = await _searchEngine.SearchAllAsync(args.query, silent: true);
             var topResults = results.Take(args.maxResults).ToList();
 
-            // If no results, try intelligent fallbacks
             if (topResults.Count == 0)
             {
                 LogTool("   No results, trying with keywords only...");

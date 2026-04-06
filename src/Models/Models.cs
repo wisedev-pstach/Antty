@@ -31,17 +31,12 @@ public record RawSearchResult(
     string BookSource
 );
 
-/// <summary>
-/// Tool arguments for searching documents
-/// </summary>
 public record SearchDocumentsArgs(
     string query = "",
     int maxResults = 5
 );
 
-/// <summary>
-/// Tool arguments for reading a specific page
-/// </summary>
+
 public record ReadPageArgs(
     string documentName = "",
     int pageNumber = 0

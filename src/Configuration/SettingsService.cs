@@ -3,7 +3,7 @@ using Spectre.Console;
 
 namespace Antty.Configuration;
 
-public class SettingsService : ISettingsService
+public class SettingsService 
 {
     public async Task ShowSettingsMenuAsync(AppConfig config)
     {
@@ -23,7 +23,7 @@ public class SettingsService : ISettingsService
         }
         catch
         {
-            return; // ESC pressed
+            return;
         }
 
         if (choice.StartsWith("🔑"))
@@ -62,7 +62,7 @@ public class SettingsService : ISettingsService
         }
         catch
         {
-            return; // ESC pressed
+            return; 
         }
 
         if (providerChoice == "🔙 Cancel")

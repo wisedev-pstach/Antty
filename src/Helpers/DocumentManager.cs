@@ -59,7 +59,6 @@ public static class DocumentManager
 
         AnsiConsole.WriteLine();
 
-        // Build display name → file path map
         var choiceMap = new Dictionary<string, string>();
 
         string MakeDisplayName(string filePath, bool useRelativePath)
@@ -73,7 +72,6 @@ public static class DocumentManager
             return display;
         }
 
-        // Group subdir files by their top-level subfolder
         var folderSentinelMap = new Dictionary<string, List<string>>();
         if (subDirFiles.Count > 0)
         {

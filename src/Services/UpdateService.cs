@@ -11,14 +11,7 @@ public static class UpdateService
 
     public static string CurrentVersion =>
         Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
-
-    /// <summary>
-    /// Returns the latest version string if a newer version is available, otherwise null.
-    /// </summary>
-    /// <summary>
-    /// Returns the latest version string if a newer version is available,
-    /// null if up to date, or throws if the check could not complete.
-    /// </summary>
+    
     public static async Task<string?> CheckForUpdateAsync(CancellationToken cancellationToken = default)
     {
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
@@ -38,10 +31,7 @@ public static class UpdateService
 
         return null;
     }
-
-    /// <summary>
-    /// Launches the bootstrap installer in a new terminal window and exits the current process.
-    /// </summary>
+    
     public static void PerformUpdate()
     {
         if (OperatingSystem.IsWindows())
@@ -55,7 +45,6 @@ public static class UpdateService
         }
         else if (OperatingSystem.IsMacOS())
         {
-            // Open a new interactive Terminal window so sudo can prompt for password
             var psi = new ProcessStartInfo { FileName = "osascript", UseShellExecute = false };
             psi.ArgumentList.Add("-e");
             psi.ArgumentList.Add($"tell application \"Terminal\" to do script \"curl -fsSL {BootstrapUnixUrl} | bash\"");
@@ -63,7 +52,6 @@ public static class UpdateService
         }
         else
         {
-            // Linux: open a new terminal emulator window
             var terminals = new[] { "gnome-terminal", "xterm", "konsole", "xfce4-terminal" };
             foreach (var term in terminals)
             {

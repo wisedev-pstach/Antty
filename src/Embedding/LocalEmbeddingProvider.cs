@@ -87,9 +87,9 @@ public class LocalEmbeddingProvider : IEmbeddingProvider
         }
         catch
         {
+            AnsiConsole.MarkupLine("[yellow]⚠[/] No GPU detected - using CPU");
         }
 
-        AnsiConsole.MarkupLine("[yellow]⚠[/] No GPU detected - using CPU");
         return 0;
     }
 

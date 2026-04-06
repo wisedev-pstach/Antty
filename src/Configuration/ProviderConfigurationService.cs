@@ -1,4 +1,3 @@
-using Antty.Configuration;
 using Antty.Core;
 using Antty.Embedding;
 using Antty.Services;
@@ -71,6 +70,7 @@ public class ProviderConfigurationService : IProviderConfigurationService
             AnsiConsole.MarkupLine("[red]Cannot proceed without Ollama.[/]");
             return (null, backendType, "");
         }
+
         if (!await OllamaManager.IsModelInstalledAsync(embeddingModel))
         {
             AnsiConsole.MarkupLine($"[yellow]Embedding model {embeddingModel} not found.[/]");
@@ -88,6 +88,7 @@ public class ProviderConfigurationService : IProviderConfigurationService
                 return (null, backendType, "");
             }
         }
+
         AnsiConsole.WriteLine();
 
         string modelName = await ConfigureOllamaModelAsync(config);
@@ -115,28 +116,13 @@ public class ProviderConfigurationService : IProviderConfigurationService
                     .PromptStyle("green")
                     .Secret());
         }
-
-        string cloudProvider;
-        try
-        {
-            cloudProvider = AnsiConsole.Prompt(
-                new SelectionPrompt<string>()
-                    .Title("[cyan]Select Chat Provider:[/]")
-                    .PageSize(10)
-                    .MoreChoicesText("[grey](Press [yellow]ESC[/] to go back)[/]")
-                    .AddChoices(new[] {
-                        "OpenAI",
-                        "Anthropic",
-                        "Google Gemini",
-                        "DeepSeek",
-                        "XAI (Grok)",
-                        "Groq"
-                    }));
-        }
-        catch
-        {
-            return (null, default, ""); // ESC → cancel
-        }
+        
+        var cloudProvider = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("[cyan]Select Chat Provider:[/]")
+                .PageSize(10)
+                .MoreChoicesText("[grey](Press [yellow]ESC[/] to go back)[/]")
+                .AddChoices("OpenAI", "Anthropic", "Google Gemini", "DeepSeek", "XAI (Grok)", "Groq"));
 
         string PromptKey(string name, string current)
         {
@@ -151,13 +137,17 @@ public class ProviderConfigurationService : IProviderConfigurationService
             string res;
             try
             {
-                res = AnsiConsole.Prompt(new SelectionPrompt<string>().Title("[cyan]Select Model:[/]").AddChoices(choices));
+                res = AnsiConsole.Prompt(new SelectionPrompt<string>().Title("[cyan]Select Model:[/]")
+                    .AddChoices(choices));
             }
             catch
             {
                 throw new OperationCanceledException(); // propagate ESC up
             }
-            if (res.Contains("Enter custom")) return AnsiConsole.Prompt(new TextPrompt<string>("[cyan]Enter Model ID:[/]").Validate(s => !string.IsNullOrWhiteSpace(s)));
+
+            if (res.Contains("Enter custom"))
+                return AnsiConsole.Prompt(
+                    new TextPrompt<string>("[cyan]Enter Model ID:[/]").Validate(s => !string.IsNullOrWhiteSpace(s)));
             return options[res];
         }
 
@@ -169,7 +159,8 @@ public class ProviderConfigurationService : IProviderConfigurationService
             if (cloudProvider == "OpenAI")
             {
                 backendType = BackendType.OpenAi;
-                modelName = SelectModel(new Dictionary<string, string> {
+                modelName = SelectModel(new Dictionary<string, string>
+                {
                     { "GPT-5.2 (Flagship)", "gpt-5.2" },
                     { "o3 (Reasoning)", "o3" },
                     { "GPT-5 Nano (Light)", "gpt-5-nano" },
@@ -181,7 +172,8 @@ public class ProviderConfigurationService : IProviderConfigurationService
             {
                 backendType = BackendType.Anthropic;
                 config.AnthropicKey = PromptKey("Anthropic", config.AnthropicKey);
-                modelName = SelectModel(new Dictionary<string, string> {
+                modelName = SelectModel(new Dictionary<string, string>
+                {
                     { "Claude 4.5 Sonnet", "claude-sonnet-4-5-20250929" },
                     { "Claude 4.5 Haiku", "claude-haiku-4-5-20251001" },
                     { "Claude 4.5 Opus", "claude-opus-4-5-20251101" },
@@ -192,7 +184,8 @@ public class ProviderConfigurationService : IProviderConfigurationService
             {
                 backendType = BackendType.Gemini;
                 config.GeminiKey = PromptKey("Google Gemini", config.GeminiKey);
-                modelName = SelectModel(new Dictionary<string, string> {
+                modelName = SelectModel(new Dictionary<string, string>
+                {
                     { "Gemini 3.0 Pro", "gemini-3.0-pro-preview" },
                     { "Gemini 2.5 Pro", "gemini-2.5-pro" },
                     { "Gemini 2.5 Flash", "gemini-2.5-flash" }
@@ -202,7 +195,8 @@ public class ProviderConfigurationService : IProviderConfigurationService
             {
                 backendType = BackendType.DeepSeek;
                 config.DeepSeekKey = PromptKey("DeepSeek", config.DeepSeekKey);
-                modelName = SelectModel(new Dictionary<string, string> {
+                modelName = SelectModel(new Dictionary<string, string>
+                {
                     { "DeepSeek R1 (Reasoner)", "deepseek-reasoner" },
                     { "DeepSeek V3 (Chat)", "deepseek-chat" }
                 });
@@ -211,7 +205,8 @@ public class ProviderConfigurationService : IProviderConfigurationService
             {
                 backendType = BackendType.Xai;
                 config.XaiKey = PromptKey("XAI (Grok)", config.XaiKey);
-                modelName = SelectModel(new Dictionary<string, string> {
+                modelName = SelectModel(new Dictionary<string, string>
+                {
                     { "Grok-4 (Flagship)", "grok-4" },
                     { "Grok-4 Reasoning", "grok-4.20-0309-reasoning" },
                     { "Grok-4.1 Fast Reasoning", "grok-4-1-fast-reasoning" },
@@ -224,7 +219,8 @@ public class ProviderConfigurationService : IProviderConfigurationService
             {
                 backendType = BackendType.GroqCloud;
                 config.GroqKey = PromptKey("Groq", config.GroqKey);
-                modelName = SelectModel(new Dictionary<string, string> {
+                modelName = SelectModel(new Dictionary<string, string>
+                {
                     { "Llama 3.3 70B", "llama-3.3-70b-versatile" },
                     { "Llama 3.1 8B", "llama-3.1-8b-instant" },
                     { "Mixtral 8x7B", "mixtral-8x7b-32768" }
@@ -237,7 +233,7 @@ public class ProviderConfigurationService : IProviderConfigurationService
         }
         catch (OperationCanceledException)
         {
-            return (null, default, ""); // ESC during model selection
+            return (null, default, "");
         }
 
         config.ChatBackend = backendType.ToString();
@@ -293,7 +289,7 @@ public class ProviderConfigurationService : IProviderConfigurationService
         }
         catch
         {
-            return ""; // ESC → cancel
+            return "";
         }
 
         if (selection.Contains("Add custom"))

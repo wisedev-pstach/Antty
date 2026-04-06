@@ -28,7 +28,6 @@ public static class MenuChoiceExtensions
         if (_baseChoiceMap.TryGetValue(displayText, out var choice))
             return choice;
 
-        // Dynamic update entry — any text starting with this prefix maps to Update
         if (displayText.StartsWith("🔄 Update Available"))
             return MenuChoice.Update;
 

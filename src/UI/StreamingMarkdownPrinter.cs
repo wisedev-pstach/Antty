@@ -2,22 +2,13 @@ using Spectre.Console;
 
 namespace Antty.UI;
 
-public class StreamingMarkdownPrinter
+public class StreamingMarkdownPrinter(Action? onFirstPrint = null)
 {
-    private System.Text.StringBuilder _lineBuffer = new System.Text.StringBuilder();
-    private System.Text.StringBuilder _rawBuffer = new System.Text.StringBuilder();
-    private System.Text.StringBuilder _fullContent = new System.Text.StringBuilder();
-    private Action? _onFirstPrint;
-    private bool _inCodeBlock = false;
-    public bool HasFlushedLine { get; private set; } = false;
-
-    public StreamingMarkdownPrinter(Action? onFirstPrint = null)
-    {
-        _onFirstPrint = onFirstPrint;
-    }
-
-    public string GetFullContent() => _fullContent.ToString();
-    public string GetLastLine() => _lineBuffer.ToString();
+    private readonly System.Text.StringBuilder _lineBuffer = new();
+    private readonly System.Text.StringBuilder _rawBuffer = new();
+    private readonly System.Text.StringBuilder _fullContent = new();
+    private Action? _onFirstPrint = onFirstPrint;
+    private bool _inCodeBlock;
 
     public void Append(string token)
     {
@@ -31,7 +22,6 @@ public class StreamingMarkdownPrinter
                 var line = _lineBuffer.ToString();
                 PrintFormattedLine(line);
                 _lineBuffer.Clear();
-                HasFlushedLine = true;
             }
             else
             {
