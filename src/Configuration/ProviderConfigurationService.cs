@@ -161,11 +161,11 @@ public class ProviderConfigurationService : IProviderConfigurationService
                 backendType = BackendType.OpenAi;
                 modelName = SelectModel(new Dictionary<string, string>
                 {
-                    { "GPT-5.2 (Flagship)", "gpt-5.2" },
+                    { "GPT-5.5 (Flagship)", "gpt-5.5" },
                     { "o3 (Reasoning)", "o3" },
-                    { "GPT-5 Nano (Light)", "gpt-5-nano" },
+                    { "GPT-5.4 Nano (Light)", "gpt-5.4-nano" },
                     { "GPT-4o (Omni)", "gpt-4o" },
-                    { "o1 (Preview)", "o1" }
+                    { "o1", "o1" }
                 });
             }
             else if (cloudProvider == "Anthropic")
@@ -174,9 +174,9 @@ public class ProviderConfigurationService : IProviderConfigurationService
                 config.AnthropicKey = PromptKey("Anthropic", config.AnthropicKey);
                 modelName = SelectModel(new Dictionary<string, string>
                 {
-                    { "Claude 4.5 Sonnet", "claude-sonnet-4-5-20250929" },
+                    { "Claude 4.6 Sonnet", "claude-sonnet-4-6" },
                     { "Claude 4.5 Haiku", "claude-haiku-4-5-20251001" },
-                    { "Claude 4.5 Opus", "claude-opus-4-5-20251101" },
+                    { "Claude 4.7 Opus", "claude-opus-4-7" },
                     { "Claude 3.7 Sonnet", "claude-3-7-sonnet" }
                 });
             }
@@ -186,7 +186,9 @@ public class ProviderConfigurationService : IProviderConfigurationService
                 config.GeminiKey = PromptKey("Google Gemini", config.GeminiKey);
                 modelName = SelectModel(new Dictionary<string, string>
                 {
-                    { "Gemini 3.0 Pro", "gemini-3.0-pro-preview" },
+                    { "Gemini 3.1 Pro", "gemini-3.1-pro-preview" },
+                    { "Gemini 3.5 Flash", "gemini-3.5-flash" },
+                    { "Gemini 3.1 Flash Lite", "gemini-3.1-flash-lite" },
                     { "Gemini 2.5 Pro", "gemini-2.5-pro" },
                     { "Gemini 2.5 Flash", "gemini-2.5-flash" }
                 });
